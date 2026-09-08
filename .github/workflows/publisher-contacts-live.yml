@@ -38,6 +38,7 @@ jobs:
     env:
       PYTHONUNBUFFERED: '1'
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+      REPORT_KEY_ID: 2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -45,29 +46,29 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Install and verify the final operator PUBLIC key
+      - name: Install and verify delivered operator PUBLIC key
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib
+          import hashlib, os
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
           pem = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsDuarXMC2yziPnOX9pWD
-          k2FCBi557pLRStREDi+emwTenId4xaOP8TaWNtSboCXUMzoVTfD7kcBI7+8Y8e/x
-          XCVyZXAqmaf1Nix/VzN0PO/vGO3arowf+4CtBEhhVhjeYG604snr76scDGK9oZAP
-          pfu7/qH8AMoBjEvRGGAPmiGx/7iSHZi3dT1PGg75jdbRKVV+9ZiKT/s0NTN0R8AC
-          P9Wg1cwP6ahMFI7ATeIYIL8nCO0y1BNeUpgraIS1/m/CkRrrYf3YzcBPg2HL7FpA
-          VIkLUR3NjGgUT8jwjggJy4DuzT2QoND/7PujNY6k9o4QfF9JYZimxVOTKYRr/qki
-          eyGNNi3C+3y/i3lEpnM1s6OMBj2tnEqjatVi8hJNMhLMjPBYeTPs6Tvc0gzIxImS
-          CpLoGja64+u/Wz9NnxmBBonGu6N7G0bnloBalbwRUmDwT55NAkVxnC+sMeis/CH6
-          snmhmUx4FqxiZJFZI6lRlrrhWIscksVz7Ws3ppW2btdvAgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAncsiZW5Oj69CcOw+alQh
+          6yigtymc66Ji856N7LdenYb2y0Ne2ChGbHMAsyj52vovaZ2+6IxanjvVB2Z8X1i+
+          nWeHToEhLDVxPJwwbNwE9Od+odpHFG2rcYMX2SKDQPJhdWC+0WoUMqs3HUQmLJwr
+          K7zLgav9vtKJa28JCvUGovNHVbBX/pfXQ14Gl8ZXYi4O9kzuRoQTC2DYbQi2/r/d
+          NNNkPoHySv8B/YRxp+Z2PU4WzPj92ZM9VuKvyl3+hzwcmhWw49T05omdtlfzMNt6
+          Jew5mq+Tp/CyhSe33MY/ksIaaGpzrkMa8s8WBYQ2K6iDYOXACkHYF/VQAKMTiSpV
+          7ULuy6J5YjdOEeCJ44rTsB77LyOPW4+8g2kIBPKq4pMQzDiePOubxNSqmMIVXRYE
+          jOzApweuH0dl8qsRtGp4irBF9gOjcFdKDrD3/xWoMfTWlc1tT4z/U3Ya6p0tQUCr
+          sml+0nnBkKiy4OBKy097tSjWlh5jO7ZeNk3R71x6/PA/AgMBAAE=
           -----END PUBLIC KEY-----
           '''
           key = serialization.load_pem_public_key(pem)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert hashlib.sha256(der).hexdigest() == os.environ['REPORT_KEY_ID']
           Path('recipient.pem').write_bytes(pem)
           print('Operator public key validated. No private key on runner.')
           PY
@@ -81,16 +82,25 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import json, base64
+          import json, base64, os
           from scan import publish, FORMAT
           envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert envelope['format'] == FORMAT
-          assert envelope['key_id'] == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert envelope['key_id'] == os.environ['REPORT_KEY_ID']
           assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           base64.b64decode(envelope['ciphertext'], validate=True)
           publish(envelope, summary)
           print('Encrypted results published; no plaintext contact export uploaded.')
           PY
+      - name: Downloadable encrypted results (no key or plaintext)
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: publisher-encrypted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            publisher_cloud/sealed/results.encrypted.json
+            publisher_cloud/sealed/summary.json
+          if-no-files-found: error
+          retention-days: 7
