@@ -19,10 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: lead-engine-activation
-      - uses: actions/setup-python@v7
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
       - name: Verify and unpack sanitized source
@@ -57,7 +58,7 @@ jobs:
       - name: Run full regression and privacy tests
         working-directory: publisher_engine
         run: python -m pytest -q
-      - name: Commit tested readable source to activation branch only
+      - name: Commit tested source while preserving concurrent changes
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
@@ -65,7 +66,16 @@ jobs:
           git add publisher_engine
           if ! git diff --cached --quiet; then
             git commit -m 'Install tested messaging engine with encrypted cloud output'
-            git push origin HEAD:lead-engine-activation
+            pushed=false
+            for attempt in 1 2 3; do
+              git fetch origin lead-engine-activation
+              git rebase origin/lead-engine-activation
+              if git push origin HEAD:lead-engine-activation; then
+                pushed=true
+                break
+              fi
+            done
+            test "$pushed" = true
           fi
       - name: Run bounded live publisher scan without search keys
         working-directory: publisher_engine
@@ -75,7 +85,7 @@ jobs:
         run: python scripts/cloud_run.py
       - name: Save ciphertext and aggregate status only
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: publisher-pilot-encrypted-${{ github.run_id }}
           path: publisher_engine/sealed/
