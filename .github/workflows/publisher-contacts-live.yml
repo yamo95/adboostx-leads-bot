@@ -52,3 +52,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scan.py --publish
+      - name: Retain encrypted results and public source only
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: publisher-scan-${{ github.run_id }}
+          path: |
+            publisher_cloud/sealed/*.json
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/recipient.pem
+            publisher_cloud/leadengine/*.py
+          retention-days: 7
+          if-no-files-found: error
