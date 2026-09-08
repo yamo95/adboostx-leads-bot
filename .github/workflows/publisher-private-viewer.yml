@@ -5,6 +5,9 @@ on:
     paths:
       - .github/workflows/publisher-private-viewer.yml
       - publisher_cloud/recipient-5488485b.pem
+      - publisher_cloud/delivery.py
+      - publisher_cloud/scan.py
+      - publisher_cloud/leadengine/**
   workflow_dispatch:
     inputs:
       batch:
@@ -36,10 +39,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Install and test runtime
+      - name: Install and test audited runtime
         run: |
           python3 -m pip install -r requirements.txt
-          python3 -m unittest -v test_scan
+          python3 -m unittest -v test_scan test_delivery
       - name: Configure user-delivered recovery public key
         run: |
           python3 - <<'PY'
@@ -53,10 +56,11 @@ jobs:
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
           assert hashlib.sha256(der).hexdigest() == '5488485b9b67dc013433652cabb933f69f22fcfdbc3d585d0773f4a760ca564c'
           Path('recipient.pem').write_bytes(raw)
-          print('Operator backup fingerprint matched. The private key is not on the runner.')
+          Path('viewer-public.pem').write_bytes(raw)
+          print('Operator backup fingerprint matched. No private key is on the runner.')
           PY
-      - name: Scan public sources without repository credentials
-        run: python3 scan.py
+      - name: Discover, scan and encrypt without repository credentials
+        run: python3 -m delivery
       - name: Publish encrypted report
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -74,11 +78,11 @@ jobs:
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice','messaging_routes_on_relevant_sites','messaging_by_channel','discovery_api_attempts','discovery_api_successes','discovery_candidates','parsing'}
           scan.publish(encrypted, summary)
           print('Published encrypted report and aggregate counts only.')
           PY
-      - name: Keep encrypted acceptance report
+      - name: Keep encrypted acceptance report and public source
         if: ${{ always() && github.event_name != 'schedule' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -86,8 +90,12 @@ jobs:
           path: |
             publisher_cloud/sealed/*.json
             publisher_cloud/scan.py
+            publisher_cloud/delivery.py
             publisher_cloud/test_scan.py
+            publisher_cloud/test_delivery.py
             publisher_cloud/requirements.txt
             publisher_cloud/seeds.txt
+            publisher_cloud/recipient-5488485b.pem
+            publisher_cloud/leadengine/*.py
           retention-days: 3
           if-no-files-found: error
