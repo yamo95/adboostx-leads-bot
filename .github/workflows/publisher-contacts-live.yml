@@ -38,14 +38,15 @@ jobs:
     env:
       PYTHONUNBUFFERED: '1'
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
-      REPORT_KEY_ID: c2c8ed00819e3c0e11ad2319b683927979f1c881cd67157eb7b0059cac246a39
+      REPORT_KEY_ID: 2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install pinned runtime
-        run: python3 -m pip install -r requirements.txt
+        run: |
+          python3 -m pip install -r requirements.txt
       - name: Install and verify delivered operator PUBLIC key
         run: |
           python3 - <<'PY'
@@ -54,15 +55,15 @@ jobs:
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
           pem = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAvsZCK8RIgYEX6Qo5CDX5
-          x91ggNq2yGOW1E0nvexwMkS0d2KcLm5FywfqOBHBnGuuzdyhSvsqb99FyK7tL6H5
-          nfl92YWY9kcXwZP1WL0Dci/PEuRLevHj+8rCmUvM6UV2Cr2BTSNifQkIPLycUREz
-          bwfw5y/jm18crrHZ/1uN9/GePQrIVQ+WAU8uAn8Me5AZhybpU6LWXAIVvoCCGTX5
-          zTLBO56Nf5n5QAk7BYqgzlD2QWmHO/oTknvcdn+Y9iEaNSrDcFOa7eyngc1iZx38
-          sRkdYH02ECBQ/78Lnlfw58/n9jfd9eJa30nLlmVY+JMYJKGpfH+Wd4eOcWYydIIM
-          pOBM0thXSAjSdwl3bPek6yjMBk4ECN68hXXhcmA/A/mMxO+KS6dxo5qPE/rfUlxR
-          Es5e3vpSc2QHaVAGQw+IEfXAVjwyT9bL0tAdTrq+b5ny7VbHAjjLQ8n2lja2I22u
-          4CX9Q/bMEWS2tGO1BANe8yK91bv6gfO6BpIz5GXdt62LAgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAncsiZW5Oj69CcOw+alQh
+          6yigtymc66Ji856N7LdenYb2y0Ne2ChGbHMAsyj52vovaZ2+6IxanjvVB2Z8X1i+
+          nWeHToEhLDVxPJwwbNwE9Od+odpHFG2rcYMX2SKDQPJhdWC+0WoUMqs3HUQmLJwr
+          K7zLgav9vtKJa28JCvUGovNHVbBX/pfXQ14Gl8ZXYi4O9kzuRoQTC2DYbQi2/r/d
+          NNNkPoHySv8B/YRxp+Z2PU4WzPj92ZM9VuKvyl3+hzwcmhWw49T05omdtlfzMNt6
+          Jew5mq+Tp/CyhSe33MY/ksIaaGpzrkMa8s8WBYQ2K6iDYOXACkHYF/VQAKMTiSpV
+          7ULuy6J5YjdOEeCJ44rTsB77LyOPW4+8g2kIBPKq4pMQzDiePOubxNSqmMIVXRYE
+          jOzApweuH0dl8qsRtGp4irBF9gOjcFdKDrD3/xWoMfTWlc1tT4z/U3Ya6p0tQUCr
+          sml+0nnBkKiy4OBKy097tSjWlh5jO7ZeNk3R71x6/PA/AgMBAAE=
           -----END PUBLIC KEY-----
           '''
           key = serialization.load_pem_public_key(pem)
