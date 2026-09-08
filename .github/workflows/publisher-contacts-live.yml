@@ -4,7 +4,10 @@ on:
   push:
     branches: [lead-engine-activation, main]
     paths:
-      - 'publisher_cloud/**'
+      - publisher_cloud/scan.py
+      - publisher_cloud/test_scan.py
+      - publisher_cloud/requirements.txt
+      - publisher_cloud/seeds.txt
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -42,17 +45,30 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify operator public key
+      - name: Install and verify the final operator PUBLIC key
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          key = serialization.load_pem_public_key(Path('recipient.pem').read_bytes())
+          pem = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsDuarXMC2yziPnOX9pWD
+          k2FCBi557pLRStREDi+emwTenId4xaOP8TaWNtSboCXUMzoVTfD7kcBI7+8Y8e/x
+          XCVyZXAqmaf1Nix/VzN0PO/vGO3arowf+4CtBEhhVhjeYG604snr76scDGK9oZAP
+          pfu7/qH8AMoBjEvRGGAPmiGx/7iSHZi3dT1PGg75jdbRKVV+9ZiKT/s0NTN0R8AC
+          P9Wg1cwP6ahMFI7ATeIYIL8nCO0y1BNeUpgraIS1/m/CkRrrYf3YzcBPg2HL7FpA
+          VIkLUR3NjGgUT8jwjggJy4DuzT2QoND/7PujNY6k9o4QfF9JYZimxVOTKYRr/qki
+          eyGNNi3C+3y/i3lEpnM1s6OMBj2tnEqjatVi8hJNMhLMjPBYeTPs6Tvc0gzIxImS
+          CpLoGja64+u/Wz9NnxmBBonGu6N7G0bnloBalbwRUmDwT55NAkVxnC+sMeis/CH6
+          snmhmUx4FqxiZJFZI6lRlrrhWIscksVz7Ws3ppW2btdvAgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
+          key = serialization.load_pem_public_key(pem)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
           assert hashlib.sha256(der).hexdigest() == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          Path('recipient.pem').write_bytes(pem)
           print('Operator public key validated. No private key on runner.')
           PY
       - name: Test extraction, URL guards, CSV safety and encryption
