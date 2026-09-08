@@ -1,0 +1,64 @@
+name: Publisher lead discovery
+"on":
+  workflow_dispatch:
+    inputs:
+      initialize_state:
+        description: 'First run ONLY: create a new private state branch'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: write
+concurrency:
+  group: publisher-leads-state
+  cancel-in-progress: false
+jobs:
+  discover:
+    if: >-
+      github.event.repository.private == true &&
+      (github.event_name == 'workflow_dispatch' || vars.LEADENGINE_AUTORUN == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install runtime
+        run: python -m pip install -r requirements.txt
+      - name: Restore durable quota and crawl state
+        id: restore
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INITIALIZE_STATE: ${{ inputs.initialize_state }}
+        run: python scripts/ci_state.py restore
+      - name: Scan known sites and discover when keys are configured
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+        run: python scripts/ci_run.py
+      - name: Save quota and crawl state even after a partial run
+        if: ${{ always() && steps.restore.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/ci_state.py save
+      - name: Upload results only - never credentials
+        if: ${{ always() && steps.restore.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: publisher-leads-${{ github.run_id }}
+          path: |
+            data/exports/
+            data/ci_result.json
+          retention-days: 7
+          if-no-files-found: warn
