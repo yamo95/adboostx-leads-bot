@@ -2,7 +2,7 @@ name: Publisher Contacts - Encrypted Live Scan
 
 on:
   push:
-    branches: [lead-engine-activation, main]
+    branches: [main]
     paths:
       - publisher_cloud/scan.py
       - publisher_cloud/test_scan.py
@@ -25,12 +25,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: publisher-contacts-encrypted-results
+  group: publisher-production-results
   cancel-in-progress: false
 
 jobs:
   scan:
-    if: github.repository == 'yamo95/adboostx-leads-bot' && github.event.repository.private == false
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -46,6 +46,19 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
+      - name: Confirm results match the delivered private viewer
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          key = serialization.load_pem_public_key(Path('recipient.pem').read_bytes())
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          expected = 'c9e3f3d8632721e745a43f81c58b8d334feb79d80a242386e25a7b33fbf9e267'
+          if hashlib.sha256(der).hexdigest() != expected:
+              raise SystemExit('Recovery key changed. Update the operator viewer before scanning.')
+          print('Delivered recovery-key fingerprint matched.')
+          PY
       - name: Test URL safety, extraction, CSV safety and encryption
         run: python3 -m unittest -v test_scan
       - name: Scan public websites and publish encrypted snapshots only
