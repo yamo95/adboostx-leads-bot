@@ -1,0 +1,54 @@
+name: Publisher Contacts - Encrypted Live Scan
+
+on:
+  push:
+    branches: [lead-engine-activation, main]
+    paths:
+      - publisher_cloud/scan.py
+      - publisher_cloud/test_scan.py
+      - publisher_cloud/requirements.txt
+      - publisher_cloud/seeds.txt
+      - publisher_cloud/recipient.pem
+      - .github/workflows/publisher-contacts-live.yml
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Public seed batch (all scans the full initial pool)
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publisher-contacts-encrypted-results
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      PYTHONUNBUFFERED: '1'
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned runtime
+        run: python3 -m pip install -r requirements.txt
+      - name: Test URL safety, extraction, CSV safety and encryption
+        run: python3 -m unittest -v test_scan
+      - name: Scan public websites and publish encrypted snapshots only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scan.py --publish
