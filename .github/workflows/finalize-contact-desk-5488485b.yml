@@ -1,0 +1,68 @@
+name: Finalize Contact Desk 5488485b
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/finalize-contact-desk-5488485b.yml]
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  finalize:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consolidate only this project's deployment experiments
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, time, urllib.error, urllib.request
+          assert os.environ['GITHUB_REPOSITORY'] == 'yamo95/adboostx-leads-bot'
+          api = 'https://api.github.com/repos/yamo95/adboostx-leads-bot'
+          headers = {'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','User-Agent':'ContactDeskFinalization/1.0'}
+          def call(method,path,data=None,allow_conflict=False):
+              req=urllib.request.Request(api+path,method=method,headers=headers,data=None if data is None else json.dumps(data).encode())
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as response:
+                      raw=response.read()
+                      return json.loads(raw) if raw else None
+              except urllib.error.HTTPError as error:
+                  if allow_conflict and error.code in {409,422}: return None
+                  raise
+          target_path='.github/workflows/publisher-private-viewer.yml'
+          def verify_source():
+              source=call('GET','/contents/'+target_path+'?ref=main')
+              text=base64.b64decode(source['content']).decode()
+              assert '5488485b9b67dc013433652cabb933f69f22fcfdbc3d585d0773f4a760ca564c' in text
+              assert 'python3 -m delivery' in text
+              return source['sha']
+          source_sha=verify_source()
+          workflows=call('GET','/actions/workflows?per_page=100')['workflows']
+          target=next(w for w in workflows if w['path']==target_path)
+          prefixes=('publisher-','admaven-operator-','contact-desk-')
+          is_experiment=lambda path:path.rsplit('/',1)[-1].startswith(prefixes)
+          disabled=[]
+          for w in workflows:
+              if is_experiment(w['path']) and w['path']!=target_path and w['state']=='active':
+                  call('PUT','/actions/workflows/'+str(w['id'])+'/disable')
+                  disabled.append(w['path'])
+          cancelled=[]
+          for status in ('queued','in_progress'):
+              runs=call('GET','/actions/runs?status='+status+'&per_page=100')['workflow_runs']
+              for run in runs:
+                  if is_experiment(run.get('path','')) and str(run['id'])!=os.environ['GITHUB_RUN_ID']:
+                      call('POST','/actions/runs/'+str(run['id'])+'/cancel',allow_conflict=True)
+                      cancelled.append(run['id'])
+          # Allow cancellation signals to stop older setup jobs before final activation.
+          for _ in range(8):
+              if all(call('GET','/actions/runs/'+str(rid))['status']=='completed' for rid in cancelled): break
+              time.sleep(2)
+          assert verify_source()==source_sha, 'Production workflow changed during activation'
+          call('PUT','/actions/workflows/'+str(target['id'])+'/enable')
+          call('POST','/actions/workflows/'+str(target['id'])+'/dispatches',{'ref':'main','inputs':{'batch':'all'}})
+          state=call('GET','/actions/workflows/'+str(target['id']))['state']
+          assert state=='active'
+          print(json.dumps({'active_workflow':target_path,'state':state,'recipient':'5488485b9b67dc013433652cabb933f69f22fcfdbc3d585d0773f4a760ca564c','disabled_duplicate_workflows':disabled,'cancelled_obsolete_runs':cancelled,'acceptance_scan_dispatched':True,'data_or_source_deleted':False},indent=2))
+          PY
