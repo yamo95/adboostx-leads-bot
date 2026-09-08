@@ -2,7 +2,7 @@ name: Publisher Desk - Production
 'on':
   push:
     branches: [main]
-    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/viewer-public.pem','.github/workflows/publisher-desk-production.yml']
+    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/viewer-public.pem','publisher_cloud/recipient-984a656b.pem','.github/workflows/publisher-desk-production.yml']
   workflow_dispatch:
     inputs:
       batch:
@@ -40,6 +40,21 @@ jobs:
         run: gh api --method PUT repos/yamo95/adboostx-leads-bot/actions/workflows/353402109/disable
       - name: Install pinned dependencies
         run: python3 -m pip install -r requirements.txt email-validator==2.3.0
+      - name: Bind operator viewer public key
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          raw = Path('recipient-984a656b.pem').read_bytes()
+          key = serialization.load_pem_public_key(raw)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
+          Path('viewer-public.pem').write_bytes(raw)
+          print('Public key matches downloadable operator viewer. No private key on runner.')
+          PY
       - name: Test extraction, channel attribution and encryption
         run: python3 -m unittest -v test_scan test_delivery
       - name: Discover and scan without repository credentials
@@ -56,7 +71,7 @@ jobs:
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert envelope['format'] == scan.FORMAT
-          assert envelope['key_id'] == '5c0b59f465395c603db75c38801c8cd886f29eacc200ad6c5c1cec1ad5f9a252'
+          assert envelope['key_id'] == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
           assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
@@ -83,7 +98,7 @@ jobs:
           PY
       - name: Retain encrypted acceptance report and public source
         if: ${{ always() && github.event_name != 'schedule' }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: contact-desk-${{ github.run_id }}
           path: |
