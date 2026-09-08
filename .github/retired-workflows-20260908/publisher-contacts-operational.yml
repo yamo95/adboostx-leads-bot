@@ -27,8 +27,9 @@ jobs:
       run:
         working-directory: publisher_cloud
     env:
+      PYTHONUNBUFFERED: '1'
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
-      REPORT_KEY_ID: 08131bbdc5137feb73a858069b0c7d9ee5a178006a6c84713d51dbabf7356cda
+      REPORT_KEY_ID: bc20d4583f84b75bb55cb7771a125263f096de29818985236359b38fcfb020e6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -36,31 +37,20 @@ jobs:
           persist-credentials: false
       - name: Install runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify delivered operator public key
+      - name: Verify operator public key
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, os
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          raw = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAuC+Ug8l2OWM+0TBuJ28h
-          1euJVgzPP9TYXzewRnRfeMk7EqXayyYGqbGe0M+BRkMf/CWc19QrTEBVbIk1Zd1G
-          hu3r35NFt5pitfcc+ZFNv6vh/Qf8xKr+ShG5O0ED4CZqaXoM9+SZSmQf8CAsLTxL
-          nI5WySe1uY9IPysG6yK5DrmHgErC+K4xC02y5kcH8TeYynpw6SSv/rpuNWJa4y2z
-          E+V3xF+KdiWMzs7BiHyoB8eEHI2xuzw2lyEpv4wxXVwk7iTIXNazmTHmqNQC+bmB
-          WwW92XH8eXDVPWbX3rUQYT08yVXOLPbsVDBpC5jOWvYkUvlaTozJu8A63cIgAX/C
-          mG1LuTCULGEqjlyRVFo7c4Zw+ap2tsvWYn2PMz9L5JoDv11pAMIczKmf2j9iYUCu
-          5MRD/MRUpf7jTZeK7oLC6YCtmKxP8PT3n+PapVSngobfCtxggL50je822vwn+FW3
-          VNsVKSNcAPSaU/8+lceHjHoap8Ujhc477ksJX+6yKmqLAgMBAAE=
-          -----END PUBLIC KEY-----
-          '''
+          raw = Path('../.operator/bc20d458-public.pem').read_bytes()
           key = serialization.load_pem_public_key(raw)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
           assert hashlib.sha256(der).hexdigest() == os.environ['REPORT_KEY_ID']
           Path('recipient.pem').write_bytes(raw)
-          print('Public key matches the delivered recovery package.')
+          print('Operator public key verified. No private key is on the runner.')
           PY
       - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
@@ -71,26 +61,28 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import json, base64, os
           from pathlib import Path
+          import json, base64, os
           import scan
-          p = Path('sealed')
-          e = json.loads((p/'results.encrypted.json').read_text())
-          assert set(e) == {'format','key_id','wrapped_key','nonce','ciphertext'}
-          assert e['format'] == scan.FORMAT and e['key_id'] == os.environ['REPORT_KEY_ID']
-          assert len(base64.b64decode(e['nonce'],validate=True)) == 12
-          assert len(base64.b64decode(e['wrapped_key'],validate=True)) == 384
-          assert len(base64.b64decode(e['ciphertext'],validate=True)) >= 16
-          s = json.loads((p/'summary.json').read_text())
-          assert set(s) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
-          assert s['run_id'] == os.environ['GITHUB_RUN_ID']
+          folder = Path('sealed')
+          encrypted = json.loads((folder/'results.encrypted.json').read_text())
+          assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert encrypted['format'] == scan.FORMAT
+          assert encrypted['key_id'] == os.environ['REPORT_KEY_ID']
+          assert len(base64.b64decode(encrypted['nonce'],validate=True)) == 12
+          assert len(base64.b64decode(encrypted['wrapped_key'],validate=True)) == 384
+          assert len(base64.b64decode(encrypted['ciphertext'],validate=True)) >= 16
+          summary = json.loads((folder/'summary.json').read_text())
+          allowed = {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert set(summary) <= allowed
+          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
           for name in ('seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites'):
-              assert type(s[name]) is int and s[name] >= 0
-          s['key_id'] = os.environ['REPORT_KEY_ID']
-          s['source_commit'] = '27af76527c81637b18905927f784998a6253e320'
-          (p/'summary.json').write_text(json.dumps(s,indent=2))
-          scan.publish(e,s)
-          print('Only encrypted contact reports and aggregate counters were published.')
+              assert type(summary[name]) is int and summary[name] >= 0
+          summary['key_id'] = os.environ['REPORT_KEY_ID']
+          summary['source_commit'] = '27af76527c81637b18905927f784998a6253e320'
+          (folder/'summary.json').write_text(json.dumps(summary,indent=2))
+          scan.publish(encrypted,summary)
+          print('Encrypted report published. No plaintext contacts uploaded.')
           PY
       - name: Export encrypted report and public source
         if: ${{ always() && github.event_name != 'schedule' }}
