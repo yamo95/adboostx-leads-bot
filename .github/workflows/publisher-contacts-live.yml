@@ -8,7 +8,6 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
-      - publisher_cloud/recipient-984a656b.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -43,20 +42,31 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify downloadable private viewer public key
+      - name: Verify delivered private dashboard public key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          raw = Path('recipient-984a656b.pem').read_bytes()
+          raw = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAncsiZW5Oj69CcOw+alQh
+          6yigtymc66Ji856N7LdenYb2y0Ne2ChGbHMAsyj52vovaZ2+6IxanjvVB2Z8X1i+
+          nWeHToEhLDVxPJwwbNwE9Od+odpHFG2rcYMX2SKDQPJhdWC+0WoUMqs3HUQmLJwr
+          K7zLgav9vtKJa28JCvUGovNHVbBX/pfXQ14Gl8ZXYi4O9kzuRoQTC2DYbQi2/r/d
+          NNNkPoHySv8B/YRxp+Z2PU4WzPj92ZM9VuKvyl3+hzwcmhWw49T05omdtlfzMNt6
+          Jew5mq+Tp/CyhSe33MY/ksIaaGpzrkMa8s8WBYQ2K6iDYOXACkHYF/VQAKMTiSpV
+          7ULuy6J5YjdOEeCJ44rTsB77LyOPW4+8g2kIBPKq4pMQzDiePOubxNSqmMIVXRYE
+          jOzApweuH0dl8qsRtGp4irBF9gOjcFdKDrD3/xWoMfTWlc1tT4z/U3Ya6p0tQUCr
+          sml+0nnBkKiy4OBKy097tSjWlh5jO7ZeNk3R71x6/PA/AgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
           key = serialization.load_pem_public_key(raw)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
+          assert hashlib.sha256(der).hexdigest() == '2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105'
           Path('recipient.pem').write_bytes(raw)
-          print('Private viewer public key verified. No private key is on the runner.')
+          print('Private dashboard public key verified. No private key is on the runner.')
           PY
       - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
@@ -74,7 +84,7 @@ jobs:
           encrypted = json.loads((folder / 'results.encrypted.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
+          assert encrypted['key_id'] == '2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105'
           assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
