@@ -1,0 +1,28 @@
+name: Verify private desk delivery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-private-desk-7a68.yml]
+  workflow_dispatch:
+permissions:
+  actions: write
+jobs:
+  activate:
+    if: github.repository == 'yamo95/adboostx-leads-bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Enable and dispatch only the delivered desk workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=353414394
+          path=$(gh api "repos/$GH_REPO/actions/workflows/$workflow" --jq '.path')
+          test "$path" = '.github/workflows/publisher-private-desk-7a68.yml'
+          gh api -X PUT "repos/$GH_REPO/actions/workflows/$workflow/enable"
+          gh api "repos/$GH_REPO/actions/workflows/$workflow" --jq '{id,path,state}'
+          gh api -X POST "repos/$GH_REPO/actions/workflows/$workflow/dispatches" -f ref=main
+          echo 'Only the delivered private desk was enabled and dispatched. Other workflows were not changed.'
