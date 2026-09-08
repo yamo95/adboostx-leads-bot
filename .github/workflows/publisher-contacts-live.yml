@@ -50,21 +50,21 @@ jobs:
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
           raw = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAncsiZW5Oj69CcOw+alQh
-          6yigtymc66Ji856N7LdenYb2y0Ne2ChGbHMAsyj52vovaZ2+6IxanjvVB2Z8X1i+
-          nWeHToEhLDVxPJwwbNwE9Od+odpHFG2rcYMX2SKDQPJhdWC+0WoUMqs3HUQmLJwr
-          K7zLgav9vtKJa28JCvUGovNHVbBX/pfXQ14Gl8ZXYi4O9kzuRoQTC2DYbQi2/r/d
-          NNNkPoHySv8B/YRxp+Z2PU4WzPj92ZM9VuKvyl3+hzwcmhWw49T05omdtlfzMNt6
-          Jew5mq+Tp/CyhSe33MY/ksIaaGpzrkMa8s8WBYQ2K6iDYOXACkHYF/VQAKMTiSpV
-          7ULuy6J5YjdOEeCJ44rTsB77LyOPW4+8g2kIBPKq4pMQzDiePOubxNSqmMIVXRYE
-          jOzApweuH0dl8qsRtGp4irBF9gOjcFdKDrD3/xWoMfTWlc1tT4z/U3Ya6p0tQUCr
-          sml+0nnBkKiy4OBKy097tSjWlh5jO7ZeNk3R71x6/PA/AgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA1BGDRrTBd+CrmOiTfiP7
+          jguUn0vkss7xJ871E5k2xbfscS/8oeDTU+z9m8Qr/axP6ra1QOPnYXxM7SdcO2w7
+          6mlCmzIIe+oCs2AYyi5H2RQQlZsNUyY5T1X/SqpCPpMm9m7CqGWvdZKLIPLjuqtd
+          HaBkqfN/XaUv2/wGcMv7Hge8zdEOxvS6QegNDDOimsV2UlGsEt5JTO5BP16dwNaP
+          oOCfjUK3sd7db3PrZm7mBLSmj9ghNvSjUUD91EQ9jfkgrrxYUuxeuHSLUKH5AHkp
+          GBemX3/6G7b3m62Aum+mzE6CBvcmIfgpajqXCQ9XMmagVvZ9AzIYLaJxCr1Ow+6c
+          E5gH80Inor/QLCiK6bshugbJz15Y9gtLqxAVey2gQITFOSC4CbnGqxRGEIWC4UAb
+          vxZDY/2cAHcn/l1pG9y7RPc2c3ee2BtftSzjMpXmR5APhZ3JxUiRuW5akhiLOQxU
+          +UGXHVtJ7F2QQ3zRVlNmYOdz/1IdhLOaixsWyaHXdw2NAgMBAAE=
           -----END PUBLIC KEY-----
           '''
           key = serialization.load_pem_public_key(raw)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == '2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105'
+          assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           print('Private dashboard public key verified. No private key is on the runner.')
           PY
@@ -84,7 +84,7 @@ jobs:
           encrypted = json.loads((folder / 'results.encrypted.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == '2ec72e118309c09f57fd112c63130e86b23362327311d1e7ec8c47301b9a3105'
+          assert encrypted['key_id'] == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
