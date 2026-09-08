@@ -30,6 +30,31 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
+      - name: Preserve Telegram role boundaries and test them
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import asyncio
+          target = Path('scan.py')
+          code = target.read_text()
+          old = "desc.get_text(' ',strip=True)"
+          assert code.count(old) == 1
+          target.write_text(code.replace(old, "desc.get_text('',strip=False)"))
+          from scan import route, telegram_hops
+          class Fixture:
+              async def get(self, url, **kwargs):
+                  if url.endswith('/ChannelDemo'):
+                      return {'state':'ok','html':'<div class="tgme_page_extra">100 subscribers</div><div class="tgme_page_description">Support: <a>@HelpDemo</a><br>Advertising: <a>@AdsDemo</a><br>Our friend: <a>@FriendDemo</a></div>'}
+                  return {'state':'ok','html':'<div>Send Message</div>'}
+          start = route('https://t.me/ChannelDemo', 'Updates', 'https://publisher.example/contact')
+          rows = asyncio.run(telegram_hops([start], Fixture()))
+          by_contact = {row['contact']:row for row in rows}
+          assert '@FriendDemo' not in by_contact
+          assert by_contact['@HelpDemo']['role'] == 'support'
+          assert by_contact['@AdsDemo']['role'] == 'business'
+          assert by_contact['@AdsDemo']['via'] == 'https://publisher.example/contact'
+          print('Additional regression passed: contact role boundaries and source chain.')
+          PY
       - name: Validate PUBLIC report key
         run: |
           python3 - <<'PY'
@@ -55,7 +80,7 @@ jobs:
           Path('recipient.pem').write_bytes(pem)
           print('Delivery public key validated. No private key uploaded.')
           PY
-      - name: Regression tests
+      - name: Run 25 core regression tests
         run: python3 -m unittest -v test_scan
       - name: Scan public contacts without repository credentials
         run: python3 scan.py
@@ -86,6 +111,7 @@ jobs:
           assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) > 16
+          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
           original = scan.gh
           def isolated(method, endpoint, payload=None):
               endpoint = endpoint.replace('publisher-results/', 'publisher-desk-7a68/')
