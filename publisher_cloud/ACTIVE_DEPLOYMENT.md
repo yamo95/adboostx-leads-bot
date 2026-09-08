@@ -1,13 +1,11 @@
-# Active publisher contact desk
+# Verified active contact desk
 
-The single scheduled workflow is `.github/workflows/publisher-private-viewer.yml`.
-It uses `publisher_cloud/recipient-b219c932.pem`, paired with the private access archive delivered to the operator in ChatGPT. The private key is not in this repository.
+The only scheduled workflow is `.github/workflows/publisher-private-viewer.yml`, using the public key `publisher_cloud/recipient-b219c932.pem` and the matching private access package delivered to the operator. No private key is stored in the repository.
 
-Live acceptance run: https://github.com/yamo95/adboostx-leads-bot/actions/runs/34266814176
-This run scanned 27 sites, opened 92 pages, and recorded 11 unique published messaging routes. Published routes are not verified accounts, identity, authority, consent or AdMaven approval.
+Acceptance run 34266814176 completed successfully. Its real encrypted output was decrypted with the delivered key: 27 sites, 92 pages, 40 contact evidence records and 11 distinct source-published messaging routes (10 Telegram, 1 WhatsApp). These are not verified active accounts or confirmed decision makers.
 
-Schedule: 09:00 and 18:00 Asia/Jerusalem, subject to GitHub delays and account/workflow availability. No automatic outreach is performed. Keyless discovery is limited to the configured seed websites plus bounded related-site/redirect candidates. Broad search API accounts and Google Sheets are not connected.
+Runs are configured at 09:00 and 18:00 Asia/Jerusalem. GitHub may delay or disable schedules according to its platform policies. Public results live at `publisher-results/index.json` and encrypted snapshots under `publisher-results/runs/`. Open the privately delivered HTML viewer to decrypt and export them.
 
-Open the private HTML viewer to read `publisher-results/index.json`, decrypt matching snapshots and export CSV. Keep the HTML and recovery key private. Encrypted historical snapshots remain in Git history.
+Keyless scans use the configured seeds plus bounded related-site/redirect candidates. This is not unlimited web discovery. Search API accounts and Google Sheets are not connected. No automatic outreach occurs.
 
-Earlier setup workflows are preserved in Git history, and a snapshot is archived in `.github/retired-workflows-20260908`, outside the active workflow directory. This prevents duplicate future scheduled scans and conflicting encryption keys. Existing result files and the original user bot were not removed.
+Earlier deployment experiments are retained in Git history and archived configuration directories outside the active workflow directory. Existing encrypted reports and the original user bot are preserved. Deleting an index entry does not erase Git history.
