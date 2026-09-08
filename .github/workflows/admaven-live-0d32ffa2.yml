@@ -1,0 +1,86 @@
+name: AdMaven Live - Private Viewer 0d32ffa2
+'on':
+  push:
+    branches: [main]
+    paths: [.github/workflows/admaven-live-0d32ffa2.yml]
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Public seed batch
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: write
+concurrency:
+  group: admaven-viewer-0d32ffa2
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      PYTHONUNBUFFERED: '1'
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    steps:
+      - name: Read a fixed scanner revision without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 244c8809de46443109bb7958999732fc37c4cd13
+          persist-credentials: false
+      - name: Install pinned dependencies
+        run: python3 -m pip install -r requirements.txt email-validator==2.3.0
+      - name: Bind the registered public key and test the scanner
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          import viewer_compat
+          raw = Path(viewer_compat.KEY_FILE).read_bytes()
+          key = serialization.load_pem_public_key(raw)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == viewer_compat.KEY_ID
+          Path('viewer-public.pem').write_bytes(raw)
+          Path('recipient.pem').write_bytes(raw)
+          PY
+          python3 -m unittest -v test_scan test_delivery
+      - name: Live discovery and public-site scanning without repository credentials
+        run: python3 delivery.py
+      - name: Publish only encrypted results and aggregate counters
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, shutil
+          import viewer_compat
+          envelope = viewer_compat.validate_envelope(json.loads(Path('sealed/results.encrypted.json').read_text()))
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          shutil.copyfile('sealed/results.encrypted.json', 'sealed/viewer-0d32ffa2.encrypted.json')
+          viewer_compat.publish_for_viewer(summary)
+          print(json.dumps(summary, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## Private contact viewer\n\nEncrypted output published to the registered viewer. No private key or plaintext contacts were uploaded.\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          if not summary.get('pages_opened'):
+              raise SystemExit('No accessible public pages. Diagnostics retained; this is not a successful crawl.')
+          PY
+      - name: Retain encrypted run evidence
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: admaven-live-${{ github.run_id }}
+          path: |
+            publisher_cloud/sealed/results.encrypted.json
+            publisher_cloud/sealed/summary.json
+          retention-days: 3
+          if-no-files-found: warn
