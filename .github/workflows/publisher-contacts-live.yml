@@ -42,47 +42,36 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify the final operator PUBLIC key
+      - name: Verify private contact desk public key
         run: |
           python3 - <<'PY'
-          from pathlib import Path
           import hashlib
+          from pathlib import Path
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
           raw = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsDuarXMC2yziPnOX9pWD
-          k2FCBi557pLRStREDi+emwTenId4xaOP8TaWNtSboCXUMzoVTfD7kcBI7+8Y8e/x
-          XCVyZXAqmaf1Nix/VzN0PO/vGO3arowf+4CtBEhhVhjeYG604snr76scDGK9oZAP
-          pfu7/qH8AMoBjEvRGGAPmiGx/7iSHZi3dT1PGg75jdbRKVV+9ZiKT/s0NTN0R8AC
-          P9Wg1cwP6ahMFI7ATeIYIL8nCO0y1BNeUpgraIS1/m/CkRrrYf3YzcBPg2HL7FpA
-          VIkLUR3NjGgUT8jwjggJy4DuzT2QoND/7PujNY6k9o4QfF9JYZimxVOTKYRr/qki
-          eyGNNi3C+3y/i3lEpnM1s6OMBj2tnEqjatVi8hJNMhLMjPBYeTPs6Tvc0gzIxImS
-          CpLoGja64+u/Wz9NnxmBBonGu6N7G0bnloBalbwRUmDwT55NAkVxnC+sMeis/CH6
-          snmhmUx4FqxiZJFZI6lRlrrhWIscksVz7Ws3ppW2btdvAgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAl89BSsuJNJX63Tvo+dV8
+          xZuItgakLlsofifPcJwznso1lsRsczNf74H3JYkXp5B10ud8dCXx9EA9HOnbLalI
+          e+pu5nUpkC8vsKyhbQ5ysAq6Ap7UvYtHzErvffQ1c0QPMPyusgBjYYwquKAsb/QX
+          swjecAO/BFSO/MwnkSfjotFN6kjmPa8LZUSxXHQMniT5DkUVTvWu/5AILc12s3qa
+          UGr4fEEMW8mJD2AjobJsn0LzIPMGi+Iiw9EZTKIT+ZrEul0nvy1/kq4rCxdHoWbt
+          wi+hXmk+HO1D1gYN1acVnWfelLYuDQZhN5rEIhVGqi4zqFm+tQPzMF23g6OQsQgf
+          4TVSYrqa6iZ+6Qn4IuF+mkCMEhoffgehUEXkeSS90pj8zkfm/4yxdPNRjZxhwzvR
+          HTBNfZP5AzR1lJaUXrjmd05iVtr/1zsaYsGloJkBVI4fofTaLfo3V+bpvJ3aZ14Q
+          jYfz9IWHlfVeTL8N0j4VAcm3PT5nzXEoKKt8KZJL2R5fAgMBAAE=
           -----END PUBLIC KEY-----
           '''
           key = serialization.load_pem_public_key(raw)
-          assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert hashlib.sha256(der).hexdigest() == '62823c12a92dc0b2615b7de4d1dc208085cd427049e850be798929196db7c5d9'
           Path('recipient.pem').write_bytes(raw)
-          print('Final operator public key verified. No private key is present.')
+          print('Private contact desk public key verified. No private key is on the runner.')
           PY
       - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
       - name: Scan and encrypt without repository credentials
-        run: |
-          python3 - <<'PY'
-          import base64, gzip, json
-          import scan
-          seal = scan.seal
-          def compact(payload, public_key):
-              raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
-              packed = {'encoding': 'gzip+base64', 'data': base64.b64encode(gzip.compress(raw, mtime=0)).decode()}
-              return seal(packed, public_key)
-          scan.seal = compact
-          raise SystemExit(scan.main())
-          PY
+        run: python3 scan.py
       - name: Publish encrypted results only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -95,13 +84,29 @@ jobs:
           encrypted = json.loads((folder / 'results.encrypted.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert encrypted['key_id'] == '62823c12a92dc0b2615b7de4d1dc208085cd427049e850be798929196db7c5d9'
           assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
-          base64.b64decode(encrypted['ciphertext'], validate=True)
+          assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
           summary = json.loads((folder / 'summary.json').read_text())
           assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          for name in ('seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites'):
+              assert type(summary[name]) is int and summary[name] >= 0
           scan.publish(encrypted, summary)
-          print('Only encrypted reports and aggregate counters were published.')
+          print('Encrypted results published. No plaintext contacts uploaded.')
           PY
+      - name: Retain encrypted acceptance report and public source
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: publisher-delivery-${{ github.run_id }}
+          path: |
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/leadengine/*.py
+            publisher_cloud/sealed/*.json
+          retention-days: 3
+          if-no-files-found: error
