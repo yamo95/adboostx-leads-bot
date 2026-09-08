@@ -4,7 +4,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/publisher-private-viewer.yml
-      - publisher_cloud/recipient-5e0b39d0.pem
+      - publisher_cloud/recipient-b219c932.pem
   workflow_dispatch:
     inputs:
       batch:
@@ -46,10 +46,10 @@ jobs:
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
-          raw = Path('recipient-5e0b39d0.pem').read_bytes()
+          raw = Path('recipient-b219c932.pem').read_bytes()
           key = serialization.load_pem_public_key(raw)
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == '5e0b39d05ac0e0df32d67f55e44f4ae74087e056386ca4af4c1600a1f54d0c5b'
+          assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           PY
       - name: Scan public sources without repository credentials
@@ -66,7 +66,7 @@ jobs:
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == '5e0b39d05ac0e0df32d67f55e44f4ae74087e056386ca4af4c1600a1f54d0c5b'
+          assert encrypted['key_id'] == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
           assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
           scan.publish(encrypted, summary)
