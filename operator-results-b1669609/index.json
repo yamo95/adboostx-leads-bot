@@ -1,7 +1,33 @@
 {
   "format": 1,
-  "updated_at": "2026-09-08T19:00:35+00:00",
+  "updated_at": "2026-09-08T19:04:29+00:00",
   "runs": [
+    {
+      "path": "operator-results-b1669609/runs/34266637589-1.json",
+      "key_id": "b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393",
+      "summary": {
+        "created_at": "2026-09-08T19:04:25+00:00",
+        "run_id": "34266637589",
+        "seed_pool": 24,
+        "seeds_scanned": 24,
+        "sites_checked": 27,
+        "pages_opened": 89,
+        "contact_evidence_records": 37,
+        "published_messaging_routes": 9,
+        "relevant_sites": 12,
+        "access_states": {
+          "ok": 89,
+          "http_404": 43,
+          "cross_site_redirect": 8,
+          "http_403": 13,
+          "robots_denied_or_unavailable": 6,
+          "too_large": 1
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
     {
       "path": "operator-results-b1669609/runs/34266241068-1.json",
       "key_id": "b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393",
