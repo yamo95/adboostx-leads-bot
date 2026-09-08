@@ -8,7 +8,7 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
-      - publisher_cloud/recipient.pem
+      - publisher_cloud/recipient-active.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -40,30 +40,45 @@ jobs:
       PYTHONUNBUFFERED: '1'
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
+      - name: Verify public recipient key (no private key on runner)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          pem = Path('recipient-active.pem').read_bytes()
+          key = serialization.load_pem_public_key(pem)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == 'b41029daf650fad2d633b23edae3ed7aefb46adeb8ed64a37ffaf3440910c04a'
+          Path('recipient.pem').write_bytes(pem)
+          print('Operator public key validated; private key is not present.')
+          PY
       - name: Test URL safety, extraction, CSV safety and encryption
         run: python3 -m unittest -v test_scan
       - name: Scan public websites and publish encrypted snapshots only
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scan.py --publish
-      - name: Retain encrypted results and public source only
-        if: always()
+      - name: Archive public source and encrypted output for acceptance checks
+        if: ${{ always() && github.event_name != 'schedule' }}
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: publisher-scan-${{ github.run_id }}
+          name: publisher-encrypted-acceptance-${{ github.run_id }}
           path: |
-            publisher_cloud/sealed/*.json
             publisher_cloud/scan.py
             publisher_cloud/test_scan.py
             publisher_cloud/requirements.txt
             publisher_cloud/seeds.txt
-            publisher_cloud/recipient.pem
+            publisher_cloud/recipient-active.pem
             publisher_cloud/leadengine/*.py
-          retention-days: 7
+            publisher_cloud/sealed/
+          retention-days: 3
           if-no-files-found: error
