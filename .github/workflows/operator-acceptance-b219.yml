@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Public seed batch
+        description: Candidate batch (all is a bounded 60-site acceptance batch)
         type: choice
         options: [auto, all, '0', '1']
         default: all
@@ -31,19 +31,69 @@ jobs:
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
       PYTHONUNBUFFERED: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Preserve accepted scanner and existing report key
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          # The source below passed live acceptance run 34267763817.
-          # Upgrade deliberately; unrelated main-branch changes cannot rotate this key.
           ref: 462fb23fc114a26e318fa4379e2aa2b8d49a070b
           persist-credentials: false
-      - name: Test accepted scanner and pair the private viewer
+      - name: Load reviewed quantity adapter only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 9f1cb5addfc660910f71dc42f315300eae69231b
+          path: quantity-config
+          sparse-checkout: |
+            publisher_cloud/quantity_expansion.py
+            publisher_cloud/test_quantity_expansion.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Install, preserve contact-role boundaries, and run regression tests
         run: |
           python3 -m pip install -r requirements.txt
-          python3 -m unittest -v test_scan
-          cp recipient-b219c932.pem recipient.pem
-      - name: Scan public sources without repository credentials
-        run: python3 scan.py
+          cp ../quantity-config/publisher_cloud/quantity_expansion.py .
+          cp ../quantity-config/publisher_cloud/test_quantity_expansion.py .
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p = Path('scanner_core.py')
+          raw = p.read_bytes()
+          blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+          assert blob == '28a3fa16f1849a14958ddf3a9f8eea58385f2ffe', 'Unexpected scanner revision'
+          source = raw.decode()
+          old = "desc.get_text(' ',strip=True)"
+          assert source.count(old) == 1
+          p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
+          PY
+          python3 -m unittest -v test_scan test_quantity_expansion
+          python3 - <<'PY'
+          import asyncio
+          from scan import route, telegram_hops
+          class Fixture:
+              async def get(self, url, **kwargs):
+                  if url.endswith('/ChannelDemo'):
+                      return {'state':'ok','html':'<div class="tgme_page_extra">100 subscribers</div><div class="tgme_page_description">Support: <a>@HelpDemo</a><br>Advertising: <a>@AdsDemo</a><br>Our friend: <a>@FriendDemo</a></div>'}
+                  return {'state':'ok','html':'<div>Send Message</div>'}
+          start = route('https://t.me/ChannelDemo', 'Updates', 'https://publisher.example/contact')
+          rows = asyncio.run(telegram_hops([start], Fixture()))
+          found = {row['contact']:row for row in rows}
+          assert '@FriendDemo' not in found
+          assert found['@HelpDemo']['role'] == 'support'
+          assert found['@AdsDemo']['role'] == 'business'
+          print('Role-boundary regression passed.')
+          PY
+      - name: Confirm existing private-viewer public key
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          raw = Path('recipient-b219c932.pem').read_bytes()
+          key = serialization.load_pem_public_key(raw)
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
+          Path('recipient.pem').write_bytes(raw)
+          PY
+      - name: Discover candidates and scan at most 60 plus 6 related sites
+        run: python3 quantity_expansion.py
       - name: Publish authenticated ciphertext only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -61,6 +111,7 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          assert 0 < summary['seeds_scanned'] <= 60 and summary['sites_checked'] <= 66
           scan.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data
