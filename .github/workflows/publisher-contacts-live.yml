@@ -8,7 +8,7 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
-      - publisher_cloud/recipient.pem
+      - publisher_cloud/operator-public.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -40,31 +40,52 @@ jobs:
       PYTHONUNBUFFERED: '1'
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Confirm results match the delivered private viewer
+      - name: Verify backed-up operator public key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
-          key = serialization.load_pem_public_key(Path('recipient.pem').read_bytes())
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          pem = Path('operator-public.pem').read_bytes()
+          key = serialization.load_pem_public_key(pem)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          expected = 'c9e3f3d8632721e745a43f81c58b8d334feb79d80a242386e25a7b33fbf9e267'
-          if hashlib.sha256(der).hexdigest() != expected:
-              raise SystemExit('Recovery key changed. Update the operator viewer before scanning.')
-          print('Delivered recovery-key fingerprint matched.')
+          assert hashlib.sha256(der).hexdigest() == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
+          Path('recipient.pem').write_bytes(pem)
+          print('Operator public-key fingerprint matched. No private key is on the runner.')
           PY
-      - name: Test URL safety, extraction, CSV safety and encryption
+      - name: Test extraction, URL guards, CSV safety and encryption
         run: python3 -m unittest -v test_scan
-      - name: Scan public websites and publish encrypted snapshots only
+      - name: Scan public websites without repository credentials
+        run: python3 scan.py
+      - name: Publish validated encrypted output only
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 scan.py --publish
+        run: |
+          python3 - <<'PY'
+          import base64, json
+          from pathlib import Path
+          import scan
+          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert envelope['format'] == scan.FORMAT
+          assert envelope['key_id'] == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
+          assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
+          assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
+          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert summary['run_id'] == __import__('os').environ['GITHUB_RUN_ID']
+          scan.publish(envelope, summary)
+          print('Encrypted results published; contact values are not public.')
+          PY
       - name: Retain encrypted results and public source only
         if: always()
         uses: actions/upload-artifact@v7.0.1
@@ -76,7 +97,7 @@ jobs:
             publisher_cloud/test_scan.py
             publisher_cloud/requirements.txt
             publisher_cloud/seeds.txt
-            publisher_cloud/recipient.pem
+            publisher_cloud/operator-public.pem
             publisher_cloud/leadengine/*.py
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: error
