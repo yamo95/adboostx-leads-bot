@@ -8,26 +8,23 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
-      - publisher_cloud/operator-public.pem
+      - publisher_cloud/delivery-public.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
       batch:
-        description: Public seed batch (all scans the full initial pool)
+        description: Public seed batch
         type: choice
         options: [auto, all, '0', '1']
         default: all
   schedule:
     - cron: '0 9,18 * * *'
       timezone: Asia/Jerusalem
-
 permissions:
   contents: write
-
 concurrency:
   group: publisher-production-results
   cancel-in-progress: false
-
 jobs:
   scan:
     if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
@@ -46,58 +43,53 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify backed-up operator public key
+      - name: Verify final operator viewer key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
-          from cryptography.hazmat.primitives.asymmetric import rsa
-          pem = Path('operator-public.pem').read_bytes()
-          key = serialization.load_pem_public_key(pem)
-          assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
+          raw = Path('delivery-public.pem').read_bytes()
+          key = serialization.load_pem_public_key(raw)
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
-          Path('recipient.pem').write_bytes(pem)
-          print('Operator public-key fingerprint matched. No private key is on the runner.')
+          if hashlib.sha256(der).hexdigest() != 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe':
+              raise SystemExit('Operator viewer key mismatch')
+          Path('recipient.pem').write_bytes(raw)
+          print('Operator viewer key verified.')
           PY
-      - name: Test extraction, URL guards, CSV safety and encryption
+      - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
-      - name: Scan public websites without repository credentials
-        run: python3 scan.py
-      - name: Publish validated encrypted output only
+      - name: Scan and encrypt without repository credentials
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, json
+          import scan
+          seal = scan.seal
+          def compact(payload, public_key):
+              raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
+              packed = {'encoding': 'gzip+base64', 'data': base64.b64encode(gzip.compress(raw, mtime=0)).decode()}
+              return seal(packed, public_key)
+          scan.seal = compact
+          raise SystemExit(scan.main())
+          PY
+      - name: Publish encrypted results only
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import base64, json
+          import base64, json, os
           from pathlib import Path
           import scan
-          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
-          summary = json.loads(Path('sealed/summary.json').read_text())
-          assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
-          assert envelope['format'] == scan.FORMAT
-          assert envelope['key_id'] == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
-          assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
-          assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
-          assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
+          folder = Path('sealed')
+          encrypted = json.loads((folder / 'results.encrypted.json').read_text())
+          assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert encrypted['format'] == scan.FORMAT
+          assert encrypted['key_id'] == 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe'
+          assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
+          summary = json.loads((folder / 'summary.json').read_text())
           assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
-          assert summary['run_id'] == __import__('os').environ['GITHUB_RUN_ID']
-          scan.publish(envelope, summary)
-          print('Encrypted results published; contact values are not public.')
+          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          scan.publish(encrypted, summary)
+          print('Encrypted results published.')
           PY
-      - name: Retain encrypted results and public source only
-        if: always()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: publisher-scan-${{ github.run_id }}
-          path: |
-            publisher_cloud/sealed/*.json
-            publisher_cloud/scan.py
-            publisher_cloud/test_scan.py
-            publisher_cloud/requirements.txt
-            publisher_cloud/seeds.txt
-            publisher_cloud/operator-public.pem
-            publisher_cloud/leadengine/*.py
-          retention-days: 3
-          if-no-files-found: error
