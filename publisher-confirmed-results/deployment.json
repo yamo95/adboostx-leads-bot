@@ -1,0 +1,1 @@
+{"run_id": "34267191138", "source_commit": "666ae44a6a7d4179a10fb5aec3571efa1cc7742f", "active_publisher_workflows": [".github/workflows/publisher-confirmed.yml"], "disabled_count": 7, "management_errors": [], "schedule": "09:00 and 18:00 Asia/Jerusalem", "mode": "bounded_keyless_discovery", "private_key_on_runner": false, "public_results_fetch": 200, "cors_allow_origin": "*"}
