@@ -1,4 +1,4 @@
-"""Compatibility delivery for the explicitly registered private user viewer.
+"""Compatibility delivery for explicitly registered private user viewers.
 
 No new crawling, plaintext publication, or private keys. The primary recipient
 and its output are left unchanged. Adding another recipient requires a reviewed
@@ -47,6 +47,10 @@ def seal_for_viewer(payload, encrypt):
     target = ROOT / 'sealed' / 'viewer-0d32ffa2.encrypted.json'
     target.parent.mkdir(exist_ok=True)
     target.write_text(json.dumps(envelope), encoding='utf-8')
+    # Preserve the explicitly delivered B219 private access package as well.
+    # Only its pinned public counterpart is present on this runner.
+    import scan
+    scan._save_operator_copy(payload)
 
 
 def publish_for_viewer(summary):
@@ -78,4 +82,10 @@ def publish_for_viewer(summary):
     index['updated_at'] = scan.stamp()
     index['note'] = 'Registered private viewer compatibility. Encrypted snapshots only; Git history is retained.'
     write(index_path, index)
-    print('Registered private viewer snapshot published; primary recipient unchanged.')
+    # The stable operator index intentionally contains only its original aggregate
+    # schema. Extra discovery metrics remain inside the encrypted full payload.
+    operator_fields = {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened',
+                       'contact_evidence_records','published_messaging_routes','relevant_sites',
+                       'access_states','status','mode','notice'}
+    scan._publish_operator_copy({name: value for name, value in summary.items() if name in operator_fields})
+    print('Registered private viewer snapshots published; primary recipient unchanged.')
