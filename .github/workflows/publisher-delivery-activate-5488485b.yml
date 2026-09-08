@@ -1,0 +1,54 @@
+name: Publisher Desk - Final Activation 5488485b
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-delivery-activate-5488485b.yml]
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  activate:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Verify backed-up recipient and consolidate publisher schedules
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          assert repo == 'yamo95/adboostx-leads-bot'
+          api = 'https://api.github.com/repos/' + repo
+          headers = {'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json', 'User-Agent':'PublisherDeskActivation/1.0'}
+          def call(method, path, data=None):
+              request = urllib.request.Request(api+path, method=method, headers=headers, data=None if data is None else json.dumps(data).encode())
+              with urllib.request.urlopen(request, timeout=25) as response:
+                  return json.load(response) if response.status != 204 else None
+          active = 'publisher-private-viewer.yml'
+          own = 'publisher-delivery-activate-5488485b.yml'
+          source = call('GET','/contents/.github/workflows/'+active+'?ref=main')
+          text = base64.b64decode(source['content']).decode()
+          assert '5488485b9b67dc013433652cabb933f69f22fcfdbc3d585d0773f4a760ca564c' in text
+          assert 'recipient-5488485b.pem' in text
+          workflows = []
+          for page in range(1, 4):
+              items = call('GET','/actions/workflows?per_page=100&page='+str(page))['workflows']
+              workflows.extend(items)
+              if len(items) < 100: break
+          target = next(w for w in workflows if w['path'] == '.github/workflows/'+active)
+          call('PUT','/actions/workflows/'+str(target['id'])+'/enable')
+          disabled = []
+          for workflow in workflows:
+              name = workflow['path'].rsplit('/',1)[-1]
+              # These prefixes belong to deployment experiments for this publisher project.
+              # Preserve unrelated workflows, the infrastructure check, source code and reports.
+              is_experiment = name.startswith(('publisher-', 'admaven-operator-', 'contact-desk-'))
+              if is_experiment and name not in {active, own} and workflow['state'] == 'active':
+                  call('PUT','/actions/workflows/'+str(workflow['id'])+'/disable')
+                  disabled.append(name)
+          call('POST','/actions/workflows/'+str(target['id'])+'/dispatches',{'ref':'main','inputs':{'batch':'all'}})
+          print(json.dumps({'active_contact_workflow':active,'recipient_fingerprint':'5488485b9b67dc013433652cabb933f69f22fcfdbc3d585d0773f4a760ca564c','disabled_experiments':disabled,'acceptance_scan_dispatched':True,'source_or_results_deleted':False},indent=2))
+          PY
