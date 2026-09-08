@@ -8,7 +8,6 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
-      - publisher_cloud/delivery-public.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -43,19 +42,31 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify final operator viewer key
+      - name: Verify delivered operator viewer key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
-          raw = Path('delivery-public.pem').read_bytes()
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          raw = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4AsWuOgQ95ipeSw5fVs3
+          Iwfsf3eDjgoDx7suskvvcyIcSBqDWFNeq5uHQNYu07oY9CGjQt21XBJjk9//EEP8
+          cOyMKbj+NseBAYqupkiF3WGYBJXqiIncki04ud1Gc5hKlMY0NuDpiOAm+NeaDlyF
+          P5bOIIa4mDYdP6t/8xVDCKZt7wObt/OnFknZNnBdHREz78obNOZophfDwPfwaxkh
+          ZXjhE2Sfjk8f7uYR64PDWeB102jxfx4G45ILsGj0n6qKJ8LOjjmqgC/fRHHIOBZU
+          uJuMzNdAmEInKks5Eif4HDnBnZD59qIbJu2kjH42UEZSJbpQClRye/r5C0vuQCcY
+          Vtdxbt0y+GiCxND+quYws9lvzJ/YvMBo2J1Ds3QCl2tv1kGN3VjaDOfZ4fGe7dBb
+          uJu6qFd6oi9kTxm/U7aVEuApfLMeXMmUVDtsF5h1bebvj2HBtqHYGDu+GC4K6Ad3
+          /LZUpP4Jk3KjAycP4OqwJ3ofFVfrXFzstFoTJFcLWqErAgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
           key = serialization.load_pem_public_key(raw)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          if hashlib.sha256(der).hexdigest() != 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe':
-              raise SystemExit('Operator viewer key mismatch')
+          assert hashlib.sha256(der).hexdigest() == '06627b353b1980cd1f6b84eda791f0840b721932b1d85c6ee5403a2a2053a61d'
           Path('recipient.pem').write_bytes(raw)
-          print('Operator viewer key verified.')
+          print('Delivered operator viewer key verified; no private key on runner.')
           PY
       - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
@@ -84,12 +95,26 @@ jobs:
           encrypted = json.loads((folder / 'results.encrypted.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe'
+          assert encrypted['key_id'] == '06627b353b1980cd1f6b84eda791f0840b721932b1d85c6ee5403a2a2053a61d'
           assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
+          base64.b64decode(encrypted['ciphertext'], validate=True)
           summary = json.loads((folder / 'summary.json').read_text())
           assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
           scan.publish(encrypted, summary)
           print('Encrypted results published.')
           PY
+      - name: Export encrypted acceptance report
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: publisher-delivery-${{ github.run_id }}
+          path: |
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/sealed/
+          retention-days: 3
+          if-no-files-found: error
