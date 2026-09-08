@@ -1,112 +1,20 @@
-name: Publisher Contacts - Encrypted Live Scan
+name: Publisher Contacts - Legacy (retired)
 
+# Kept as a manual notice, not a second recurring crawler.
+# Active production workflow: admaven-operator-b1669609.yml
 on:
-  push:
-    branches: [main]
-    paths:
-      - publisher_cloud/scan.py
-      - publisher_cloud/test_scan.py
-      - publisher_cloud/requirements.txt
-      - publisher_cloud/seeds.txt
-      - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
-    inputs:
-      batch:
-        description: Public seed batch
-        type: choice
-        options: [auto, all, '0', '1']
-        default: all
-  schedule:
-    - cron: '0 9,18 * * *'
-      timezone: Asia/Jerusalem
-permissions:
-  contents: write
-concurrency:
-  group: publisher-production-results
-  cancel-in-progress: false
+
+permissions: {}
+
 jobs:
-  scan:
-    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+  active-workflow:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: publisher_cloud
-    env:
-      PYTHONUNBUFFERED: '1'
-      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Install pinned runtime
-        run: python3 -m pip install -r requirements.txt
-      - name: Verify delivered private dashboard public key
+      - name: Identify the active workflow
         run: |
-          python3 - <<'PY'
-          import hashlib
-          from pathlib import Path
-          from cryptography.hazmat.primitives import serialization
-          from cryptography.hazmat.primitives.asymmetric import rsa
-          raw = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA1BGDRrTBd+CrmOiTfiP7
-          jguUn0vkss7xJ871E5k2xbfscS/8oeDTU+z9m8Qr/axP6ra1QOPnYXxM7SdcO2w7
-          6mlCmzIIe+oCs2AYyi5H2RQQlZsNUyY5T1X/SqpCPpMm9m7CqGWvdZKLIPLjuqtd
-          HaBkqfN/XaUv2/wGcMv7Hge8zdEOxvS6QegNDDOimsV2UlGsEt5JTO5BP16dwNaP
-          oOCfjUK3sd7db3PrZm7mBLSmj9ghNvSjUUD91EQ9jfkgrrxYUuxeuHSLUKH5AHkp
-          GBemX3/6G7b3m62Aum+mzE6CBvcmIfgpajqXCQ9XMmagVvZ9AzIYLaJxCr1Ow+6c
-          E5gH80Inor/QLCiK6bshugbJz15Y9gtLqxAVey2gQITFOSC4CbnGqxRGEIWC4UAb
-          vxZDY/2cAHcn/l1pG9y7RPc2c3ee2BtftSzjMpXmR5APhZ3JxUiRuW5akhiLOQxU
-          +UGXHVtJ7F2QQ3zRVlNmYOdz/1IdhLOaixsWyaHXdw2NAgMBAAE=
-          -----END PUBLIC KEY-----
-          '''
-          key = serialization.load_pem_public_key(raw)
-          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
-          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
-          Path('recipient.pem').write_bytes(raw)
-          print('Private dashboard public key verified. No private key is on the runner.')
-          PY
-      - name: Test extraction and encryption
-        run: python3 -m unittest -v test_scan
-      - name: Scan and encrypt without repository credentials
-        run: python3 scan.py
-      - name: Publish encrypted results only
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import base64, json, os
-          from pathlib import Path
-          import scan
-          folder = Path('sealed')
-          encrypted = json.loads((folder / 'results.encrypted.json').read_text())
-          assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
-          assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
-          assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
-          assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
-          assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
-          summary = json.loads((folder / 'summary.json').read_text())
-          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
-          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          for name in ('seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites'):
-              assert type(summary[name]) is int and summary[name] >= 0
-          scan.publish(encrypted, summary)
-          print('Encrypted results published. No plaintext contacts uploaded.')
-          PY
-      - name: Retain encrypted acceptance report and public source
-        if: ${{ always() && github.event_name != 'schedule' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: publisher-delivery-${{ github.run_id }}
-          path: |
-            publisher_cloud/scan.py
-            publisher_cloud/test_scan.py
-            publisher_cloud/requirements.txt
-            publisher_cloud/seeds.txt
-            publisher_cloud/leadengine/*.py
-            publisher_cloud/sealed/*.json
-          retention-days: 3
-          if-no-files-found: error
+          echo 'The active scheduled scanner is AdMaven Contacts - Operator.'
+          echo 'Workflow file: .github/workflows/admaven-operator-b1669609.yml'
+          echo 'Encrypted results: operator-results-b1669609/index.json'
+          echo 'Open the private Contact Desk delivered to the operator.'
