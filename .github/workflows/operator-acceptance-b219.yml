@@ -1,0 +1,56 @@
+name: Private operator access acceptance
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/operator-acceptance-b219.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publisher-production-results
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      SEED_BATCH: all
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Test preserved scanner behavior
+        run: |
+          python3 -m pip install -r requirements.txt
+          python3 -m unittest -v test_scan
+          cp recipient-b219c932.pem recipient.pem
+      - name: Scan public sources without publishing credentials
+        run: python3 scan.py
+      - name: Publish authenticated ciphertext only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import scan
+          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert envelope['key_id'] == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
+          scan.publish(envelope, summary)
+          PY
+      - name: Retain encrypted acceptance data
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-operator-b219-${{ github.run_id }}
+          path: publisher_cloud/sealed/*.json
+          retention-days: 3
+          if-no-files-found: error
