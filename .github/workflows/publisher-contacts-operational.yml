@@ -1,0 +1,100 @@
+name: Publisher Contacts - Operational
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-contacts-operational.yml]
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Public starting-site batch
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: write
+concurrency:
+  group: publisher-production-results
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      PYTHONUNBUFFERED: '1'
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+      REPORT_KEY_ID: bc20d4583f84b75bb55cb7771a125263f096de29818985236359b38fcfb020e6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 27af76527c81637b18905927f784998a6253e320
+          persist-credentials: false
+      - name: Install runtime
+        run: python3 -m pip install -r requirements.txt
+      - name: Verify operator public key
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, os
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          raw = Path('../.operator/bc20d458-public.pem').read_bytes()
+          key = serialization.load_pem_public_key(raw)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == os.environ['REPORT_KEY_ID']
+          Path('recipient.pem').write_bytes(raw)
+          print('Operator public key verified. No private key is on the runner.')
+          PY
+      - name: Test extraction and encryption
+        run: python3 -m unittest -v test_scan
+      - name: Live scan without repository credentials
+        run: python3 scan.py
+      - name: Publish encrypted results
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, base64, os
+          import scan
+          folder = Path('sealed')
+          encrypted = json.loads((folder/'results.encrypted.json').read_text())
+          assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert encrypted['format'] == scan.FORMAT
+          assert encrypted['key_id'] == os.environ['REPORT_KEY_ID']
+          assert len(base64.b64decode(encrypted['nonce'],validate=True)) == 12
+          assert len(base64.b64decode(encrypted['wrapped_key'],validate=True)) == 384
+          assert len(base64.b64decode(encrypted['ciphertext'],validate=True)) >= 16
+          summary = json.loads((folder/'summary.json').read_text())
+          allowed = {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert set(summary) <= allowed
+          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          for name in ('seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites'):
+              assert type(summary[name]) is int and summary[name] >= 0
+          summary['key_id'] = os.environ['REPORT_KEY_ID']
+          summary['source_commit'] = '27af76527c81637b18905927f784998a6253e320'
+          (folder/'summary.json').write_text(json.dumps(summary,indent=2))
+          scan.publish(encrypted,summary)
+          print('Encrypted report published. No plaintext contacts uploaded.')
+          PY
+      - name: Export encrypted report and public source
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: operational-report-${{ github.run_id }}
+          path: |
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/sealed/results.encrypted.json
+            publisher_cloud/sealed/summary.json
+          retention-days: 3
+          if-no-files-found: error
