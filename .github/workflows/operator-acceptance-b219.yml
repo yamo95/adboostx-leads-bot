@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate batch (all is a bounded 60-site acceptance batch)
+        description: Candidate batch (all is a bounded 240-site acceptance run)
         type: choice
         options: [auto, all, '0', '1']
         default: all
@@ -23,7 +23,7 @@ jobs:
   verify:
     if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: publisher_cloud
@@ -36,14 +36,16 @@ jobs:
         with:
           ref: 462fb23fc114a26e318fa4379e2aa2b8d49a070b
           persist-credentials: false
-      - name: Load reviewed quantity adapter only
+      - name: Load reviewed capacity adapters only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 9f1cb5addfc660910f71dc42f315300eae69231b
+          ref: afe990c1b0b0d5a9bac4625e8267d765868d1d84
           path: quantity-config
           sparse-checkout: |
             publisher_cloud/quantity_expansion.py
             publisher_cloud/test_quantity_expansion.py
+            publisher_cloud/scale_profile.py
+            publisher_cloud/test_scale_profile.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Install, preserve contact-role boundaries, and run regression tests
@@ -51,6 +53,8 @@ jobs:
           python3 -m pip install -r requirements.txt
           cp ../quantity-config/publisher_cloud/quantity_expansion.py .
           cp ../quantity-config/publisher_cloud/test_quantity_expansion.py .
+          cp ../quantity-config/publisher_cloud/scale_profile.py .
+          cp ../quantity-config/publisher_cloud/test_scale_profile.py .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -63,7 +67,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -92,8 +96,8 @@ jobs:
           assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           PY
-      - name: Discover candidates and scan at most 60 plus 6 related sites
-        run: python3 quantity_expansion.py
+      - name: Scan rotating candidates with unchanged contact-quality rules
+        run: python3 scale_profile.py
       - name: Publish authenticated ciphertext only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -111,7 +115,9 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          assert 0 < summary['seeds_scanned'] <= 60 and summary['sites_checked'] <= 66
+          cap = 240 if os.environ['SEED_BATCH'] == 'all' else 120
+          assert 0 < summary['seeds_scanned'] <= cap
+          assert summary['sites_checked'] <= cap + 12
           scan.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data
