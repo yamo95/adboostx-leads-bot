@@ -1,0 +1,97 @@
+name: Publisher Desk - Production
+'on':
+  push:
+    branches: [main]
+    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/viewer-public.pem','.github/workflows/publisher-desk-production.yml']
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Seed batch
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: publisher-desk-production
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Disable the superseded duplicate publisher scanner only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT repos/yamo95/adboostx-leads-bot/actions/workflows/353402109/disable
+      - name: Install pinned dependencies
+        run: python3 -m pip install -r requirements.txt email-validator==2.3.0
+      - name: Test extraction, channel attribution and encryption
+        run: python3 -m unittest -v test_scan test_delivery
+      - name: Discover and scan without repository credentials
+        run: python3 delivery.py
+      - name: Publish isolated encrypted results only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re
+          from pathlib import Path
+          import scan
+          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert envelope['format'] == scan.FORMAT
+          assert envelope['key_id'] == '5c0b59f465395c603db75c38801c8cd886f29eacc200ad6c5c1cec1ad5f9a252'
+          assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
+          assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
+          allowed = {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice','messaging_routes_on_relevant_sites','messaging_by_channel','discovery_api_attempts','discovery_api_successes','discovery_candidates','parsing'}
+          assert set(summary) <= allowed
+          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          rid = os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          assert re.fullmatch(r'[0-9-]+',rid)
+          path = 'publisher-desk-results/runs/' + rid + '.json'
+          def write(path, obj, message):
+              old = scan.gh('GET','contents/'+path+'?ref=main')
+              data = {'branch':'main','message':message,'content':base64.b64encode(json.dumps(obj).encode()).decode()}
+              if old: data['sha'] = old['sha']
+              scan.gh('PUT','contents/'+path,data)
+          write(path,envelope,'Store encrypted contact desk snapshot '+rid)
+          ipath = 'publisher-desk-results/index.json'
+          old = scan.gh('GET','contents/'+ipath+'?ref=main')
+          index = json.loads(base64.b64decode(old['content'])) if old else {'format':1,'runs':[]}
+          index['runs'] = [{'path':path,'key_id':envelope['key_id'],'summary':summary}] + [r for r in index['runs'] if r['path'] != path][:59]
+          index['updated_at'] = scan.stamp()
+          index['note'] = 'Only encrypted results; removing an index entry does not erase Git history.'
+          write(ipath,index,'Refresh encrypted contact desk index')
+          print('Contact desk snapshot published. No plaintext contacts or private key uploaded.')
+          PY
+      - name: Retain encrypted acceptance report and public source
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: contact-desk-${{ github.run_id }}
+          path: |
+            publisher_cloud/*.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/viewer-public.pem
+            publisher_cloud/leadengine/*.py
+            publisher_cloud/sealed/*.json
+          retention-days: 3
+          if-no-files-found: error
