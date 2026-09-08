@@ -1,0 +1,24 @@
+name: Export Encrypted Publisher Results
+on:
+  push:
+    branches: [lead-engine-activation, main]
+    paths: [.github/workflows/publisher-results-export.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify encrypted snapshot exists
+        run: test -f publisher-results/index.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: encrypted-publisher-results
+          path: publisher-results/
+          retention-days: 3
+          if-no-files-found: error
