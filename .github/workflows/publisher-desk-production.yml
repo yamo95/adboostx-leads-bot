@@ -2,7 +2,7 @@ name: Publisher Desk - Production
 'on':
   push:
     branches: [main]
-    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/recipient-89446fbd.pem','.github/workflows/publisher-desk-production.yml']
+    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/recipient-89446fbd.pem','publisher_cloud/viewer_compat.py','publisher_cloud/recipient-0d32ffa2.pem','.github/workflows/publisher-desk-production.yml']
   workflow_dispatch:
     inputs:
       batch:
@@ -72,10 +72,11 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          import delivery, scan
+          import delivery, scan, viewer_compat
           seal_full = delivery.corrected_seal
           def seal_with_acceptance(payload, unused):
               encrypted = seal_full(payload, unused)
+              viewer_compat.seal_for_viewer(payload, delivery.BASE_SEAL)
               sample = [c for c in payload['contacts'] if c['channel'] in {'telegram','whatsapp'} and c.get('site_fit') == 'PASS' and c.get('quality') in {'PUBLISHED_BUSINESS_ROUTE','PUBLISHED_GENERAL_ROUTE'}][:3]
               preview = {'summary':payload['summary'],'contacts':sample,'sites':[],'files':{},'notice':'Acceptance sample only, not the complete report.'}
               out = Path('sealed'); out.mkdir(exist_ok=True)
@@ -91,7 +92,7 @@ jobs:
           python3 - <<'PY'
           import base64, json, os, re
           from pathlib import Path
-          import scan
+          import scan, viewer_compat
           expected = '89446fbd020c01a27575816ca87e4c2cb03eaa3439265465363104998327a7cb'
           def checked(path):
               e = json.loads(Path(path).read_text())
@@ -123,6 +124,7 @@ jobs:
           index['updated_at'] = scan.stamp()
           index['note'] = 'Encrypted results only. Historical snapshots may require an earlier key. Deleting an index entry does not erase Git history.'
           write(ipath,index,'Refresh contact desk index '+rid)
+          viewer_compat.publish_for_viewer(summary)
           print(json.dumps(summary, indent=2))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('## Publisher Desk\n\nEncrypted results were published successfully. No private key or plaintext contacts were uploaded.\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
