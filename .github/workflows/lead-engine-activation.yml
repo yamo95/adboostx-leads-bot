@@ -1,0 +1,84 @@
+name: Lead Engine Activation
+
+on:
+  push:
+    branches: [lead-engine-activation]
+    paths: [.github/workflows/lead-engine-activation.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publisher-engine-activation
+  cancel-in-progress: false
+
+jobs:
+  activate-and-test:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: lead-engine-activation
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Verify and unpack sanitized source
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma
+          from pathlib import Path
+          root = Path.cwd().resolve()
+          parts = sorted((root / '.activation').glob('part-*.b64'))
+          assert len(parts) == 10, 'Source bundle is incomplete'
+          blob = base64.b64decode(''.join(p.read_text().strip() for p in parts), validate=True)
+          assert hashlib.sha256(blob).hexdigest() == 'd8893dfdbb73758ffb5df74f5cb2d277c5ff7f9fc522d4a7526c29cc63cea17e', 'Source checksum mismatch'
+          text = lzma.decompress(blob)
+          assert len(text) == 195269, 'Unexpected source size'
+          files = json.loads(text)
+          assert len(files) == 44, 'Unexpected file count'
+          for name, content in files.items():
+              path = Path(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert path.parts[0] == 'publisher_engine'
+              dest = (root / path).resolve()
+              assert dest.is_relative_to(root / 'publisher_engine')
+              assert isinstance(content, str)
+              assert '-----BEGIN PRIVATE KEY-----' not in content
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_text(content, encoding='utf-8')
+          print('Verified and unpacked 44 source files; no private key included.')
+          PY
+      - name: Install dependencies
+        run: python -m pip install -r publisher_engine/requirements-dev.txt
+      - name: Run full regression and privacy tests
+        working-directory: publisher_engine
+        run: python -m pytest -q
+      - name: Commit tested readable source to activation branch only
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add publisher_engine
+          if ! git diff --cached --quiet; then
+            git commit -m 'Install tested messaging engine with encrypted cloud output'
+            git push origin HEAD:lead-engine-activation
+          fi
+      - name: Run bounded live publisher scan without search keys
+        working-directory: publisher_engine
+        env:
+          SEED_BATCH: '0'
+          PYTHONUNBUFFERED: '1'
+        run: python scripts/cloud_run.py
+      - name: Save ciphertext and aggregate status only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: publisher-pilot-encrypted-${{ github.run_id }}
+          path: publisher_engine/sealed/
+          retention-days: 14
+          if-no-files-found: warn
+          include-hidden-files: false
