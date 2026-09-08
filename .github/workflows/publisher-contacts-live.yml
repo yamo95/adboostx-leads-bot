@@ -4,16 +4,12 @@ on:
   push:
     branches: [lead-engine-activation, main]
     paths:
-      - publisher_cloud/scan.py
-      - publisher_cloud/test_scan.py
-      - publisher_cloud/requirements.txt
-      - publisher_cloud/seeds.txt
-      - publisher_cloud/recipient-active.pem
+      - 'publisher_cloud/**'
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
       batch:
-        description: Public seed batch (all scans the full initial pool)
+        description: Public seed batch (all scans the initial pool)
         type: choice
         options: [auto, all, '0', '1']
         default: all
@@ -46,39 +42,39 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify public recipient key (no private key on runner)
+      - name: Verify operator public key
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          pem = Path('recipient-active.pem').read_bytes()
-          key = serialization.load_pem_public_key(pem)
+          key = serialization.load_pem_public_key(Path('recipient.pem').read_bytes())
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'b41029daf650fad2d633b23edae3ed7aefb46adeb8ed64a37ffaf3440910c04a'
-          Path('recipient.pem').write_bytes(pem)
-          print('Operator public key validated; private key is not present.')
+          assert hashlib.sha256(der).hexdigest() == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          print('Operator public key validated. No private key on runner.')
           PY
-      - name: Test URL safety, extraction, CSV safety and encryption
+      - name: Test extraction, URL guards, CSV safety and encryption
         run: python3 -m unittest -v test_scan
-      - name: Scan public websites and publish encrypted snapshots only
+      - name: Scan public websites without repository credentials
+        run: python3 scan.py
+      - name: Publish only validated encrypted output
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 scan.py --publish
-      - name: Archive public source and encrypted output for acceptance checks
-        if: ${{ always() && github.event_name != 'schedule' }}
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: publisher-encrypted-acceptance-${{ github.run_id }}
-          path: |
-            publisher_cloud/scan.py
-            publisher_cloud/test_scan.py
-            publisher_cloud/requirements.txt
-            publisher_cloud/seeds.txt
-            publisher_cloud/recipient-active.pem
-            publisher_cloud/leadengine/*.py
-            publisher_cloud/sealed/
-          retention-days: 3
-          if-no-files-found: error
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, base64
+          from scan import publish, FORMAT
+          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert envelope['format'] == FORMAT
+          assert envelope['key_id'] == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert len(base64.b64decode(envelope['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
+          base64.b64decode(envelope['ciphertext'], validate=True)
+          publish(envelope, summary)
+          print('Encrypted results published; no plaintext contact export uploaded.')
+          PY
