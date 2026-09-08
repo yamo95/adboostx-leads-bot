@@ -1,0 +1,30 @@
+name: Publisher Desk - Activate
+'on':
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-desk-activate.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  activate:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Stop duplicate schedules and enable the consolidated production workflow
+        run: |
+          for old in admaven-operator-b1669609.yml contact-desk-62823.yml publisher-contacts-live.yml publisher-contacts-operational.yml publisher-delivery-143e7625.yml publisher-operator-06627b.yml publisher-private-viewer.yml publisher-private-workspace.yml; do
+            state=$(gh api "repos/yamo95/adboostx-leads-bot/actions/workflows/$old" --jq '.state')
+            if [ "$state" = active ]; then
+              gh api --method PUT "repos/yamo95/adboostx-leads-bot/actions/workflows/$old/disable"
+            fi
+            printf '%s: inactive\n' "$old"
+          done
+          gh api --method PUT repos/yamo95/adboostx-leads-bot/actions/workflows/publisher-desk-production.yml/enable
+          gh api --method POST repos/yamo95/adboostx-leads-bot/actions/workflows/publisher-desk-production.yml/dispatches -f ref=main
+          gh api repos/yamo95/adboostx-leads-bot/actions/workflows/publisher-desk-production.yml --jq '{name, state, path}'
+          printf 'Production run requested using the current main branch.\n'
