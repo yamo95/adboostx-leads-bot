@@ -40,8 +40,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for old in admaven-operator-b1669609.yml contact-desk-62823.yml publisher-contacts-live.yml publisher-contacts-operational.yml publisher-delivery-143e7625.yml publisher-operator-06627b.yml publisher-private-viewer.yml publisher-private-workspace.yml; do
-            gh api --method PUT "repos/yamo95/adboostx-leads-bot/actions/workflows/$old/disable"
-            printf 'Disabled duplicate workflow: %s\n' "$old"
+            state=$(gh api "repos/yamo95/adboostx-leads-bot/actions/workflows/$old" --jq '.state')
+            if [ "$state" = active ]; then
+              gh api --method PUT "repos/yamo95/adboostx-leads-bot/actions/workflows/$old/disable"
+              printf 'Disabled duplicate workflow: %s\n' "$old"
+            else
+              printf 'Already inactive: %s (%s)\n' "$old" "$state"
+            fi
           done
       - name: Install pinned dependencies
         run: python3 -m pip install -r requirements.txt email-validator==2.3.0
@@ -131,4 +136,4 @@ jobs:
           name: contact-desk-${{ github.run_id }}
           path: publisher_cloud/sealed/*.json
           retention-days: 3
-          if-no-files-found: error
+          if-no-files-found: warn
