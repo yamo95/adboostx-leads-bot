@@ -55,6 +55,32 @@ jobs:
           Path('recipient.pem').write_bytes(pem)
           print('Public recipient matched the private operator backup.')
           PY
+      - name: Preserve Telegram role boundaries and run regression check
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import asyncio
+          path = Path('scan.py')
+          source = path.read_text()
+          old = "desc.get_text(' ',strip=True)"
+          assert source.count(old) == 1, 'Unexpected scanner revision'
+          path.write_text(source.replace(old, "desc.get_text(' ',strip=False)"))
+          import scan
+          class PreviewFixture:
+              async def get(self, url, **kwargs):
+                  if url == 'https://t.me/OpsChannel':
+                      html = '<div class="tgme_page_extra">200 subscribers</div><div class="tgme_page_description">Support: @OpsSupport<br>Advertising: @OpsAds<br>News: @OpsNews</div>'
+                  else:
+                      html = '<div class="tgme_page_extra">Public contact</div><p>If you have Telegram, you can contact this account.</p>'
+                  return {'state':'ok','html':html}
+          start = scan.route('https://t.me/OpsChannel','Our channel','https://publisher.example/contact')
+          items = asyncio.run(scan.telegram_hops([start], PreviewFixture()))
+          roles = {item['contact']:item['role'] for item in items}
+          assert roles['@OpsSupport'] == 'support'
+          assert roles['@OpsAds'] == 'business'
+          assert '@OpsNews' not in roles
+          print('Role-boundary regression passed; support, ads and news are separate.')
+          PY
       - name: Run extraction and encryption tests
         run: python3 -m unittest -v test_scan
       - name: Scan without repository credentials
