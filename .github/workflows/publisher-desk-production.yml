@@ -2,7 +2,7 @@ name: Publisher Desk - Production
 'on':
   push:
     branches: [main]
-    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/recipient-0d32ffa2.pem','.github/workflows/publisher-desk-production.yml']
+    paths: ['publisher_cloud/delivery.py','publisher_cloud/test_delivery.py','publisher_cloud/recipient-89446fbd.pem','.github/workflows/publisher-desk-production.yml']
   workflow_dispatch:
     inputs:
       batch:
@@ -57,11 +57,11 @@ jobs:
           import hashlib
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          raw = Path('recipient-0d32ffa2.pem').read_bytes()
+          raw = Path('recipient-89446fbd.pem').read_bytes()
           key = serialization.load_pem_public_key(raw)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == '0d32ffa20b873f7bff683a7193da8da42a65ba0d2fba4f604c5c880dc351aa85'
+          assert hashlib.sha256(der).hexdigest() == '89446fbd020c01a27575816ca87e4c2cb03eaa3439265465363104998327a7cb'
           Path('viewer-public.pem').write_bytes(raw)
           print('Public key bound. Private key is not present on this runner.')
           PY
@@ -92,7 +92,7 @@ jobs:
           import base64, json, os, re
           from pathlib import Path
           import scan
-          expected = '0d32ffa20b873f7bff683a7193da8da42a65ba0d2fba4f604c5c880dc351aa85'
+          expected = '89446fbd020c01a27575816ca87e4c2cb03eaa3439265465363104998327a7cb'
           def checked(path):
               e = json.loads(Path(path).read_text())
               assert set(e) == {'format','key_id','wrapped_key','nonce','ciphertext'}
