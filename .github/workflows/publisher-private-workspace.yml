@@ -1,0 +1,115 @@
+name: Publisher Private Workspace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publisher-private-workspace.yml
+      - publisher_cloud/scan.py
+      - publisher_cloud/test_scan.py
+      - publisher_cloud/requirements.txt
+      - publisher_cloud/seeds.txt
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Public seed batch
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: read
+concurrency:
+  group: publisher-delivered-private-workspace
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: write
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      PYTHONUNBUFFERED: '1'
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned runtime
+        run: python3 -m pip install -r requirements.txt
+      - name: Bind encryption to the attached private access package
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          from cryptography.hazmat.primitives import serialization
+          raw = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArx16GDnlqGDzvK0Que/3
+          nG9xlueiOcvRExbjX0pJ0f0mlsBRYxRvm63P1YowH6+qgvQtA2zxOJVDFOP1j42w
+          BiA+fd0UWtQGjZ9+LMhbW45IHZ77ILr342PhhOXVVlF4sSS/NhDNo6Oquz1gKsqj
+          b3VU6zXIwHHYzx4kbrxu60CbCGe6e8F9DlQPw1RXF+VDvUygE8HbS2b8nSxfKiai
+          6nWTxv/PDqFXprwNmcwHU5TnyFsQ5fLkXbqzyfoWFq6w+Y43/dRMZaknzl/lT8zi
+          Masm9BmuXzKsuIQZLN/zbvNN94Vxqajm8/3W3iEP2WnqG0t5EJCNhL2bLEMIKR27
+          4TShXJDBhuRRm3Ug628omVBZk1XdrVrQAZgildWKqWaWLdN2fW+nwvfTy/6t3239
+          ZuqLQKtwRDUfMypGQByQ5byDtsM/S47tIJjZB0iwrO5GAOSpiBMOoLqfbwie6Lfo
+          CkYQ/iVXtrHKdPTTVfeQGU52mBquPW7bQZAYISJmaX5lAgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
+          key = serialization.load_pem_public_key(raw)
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == '3fe4d16feca6ed2db3a5d0d2c6b726073bfd503d911d24cf59111cee07c3c670'
+          Path('recipient.pem').write_bytes(raw)
+          print('Public key matches the delivered private access package.')
+          PY
+      - name: Test extraction and encryption
+        run: python3 -m unittest -v test_scan
+      - name: Scan and encrypt without repository credentials
+        run: python3 scan.py
+      - name: Publish authenticated ciphertext only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os
+          from pathlib import Path
+          import scan
+          folder = Path('sealed')
+          encrypted = json.loads((folder / 'results.encrypted.json').read_text())
+          assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert encrypted['format'] == scan.FORMAT
+          assert encrypted['key_id'] == '3fe4d16feca6ed2db3a5d0d2c6b726073bfd503d911d24cf59111cee07c3c670'
+          assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
+          assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
+          summary = json.loads((folder / 'summary.json').read_text())
+          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          scan.publish(encrypted, summary)
+          print('Encrypted report published; no plaintext contacts uploaded.')
+          PY
+      - name: Disable the superseded scan workflow to avoid duplicate schedules
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT repos/yamo95/adboostx-leads-bot/actions/workflows/353402109/disable
+      - name: Retain encrypted report and public source
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: private-workspace-${{ github.run_id }}
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+            publisher_cloud/recipient.pem
+            publisher_cloud/sealed/*.json
