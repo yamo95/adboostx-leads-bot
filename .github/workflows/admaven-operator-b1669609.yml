@@ -40,20 +40,32 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify the operator public key
+      - name: Verify the delivered private desk public key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          pem = Path('operator-public.pem').read_bytes()
+          pem = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArs6uJkQmZzOGT+/3THgY
+          OvalkPIVRnAyBGFf5rnqnoDsAPJyzonp7XXREvmblsN54v0wsNTjAJmylrHHS3j0
+          lTzn1XNhMPepuZvqbN+oRqgA69djOXr5EWryF/YKhsvGhqDnwcajowWp3DirfNq+
+          RLQsWjQNFPwq1oNRwzhHxhzISZjcrXCCPXZDsLepNy+pioI+JWMj9+FkFYvjQTOK
+          0VMoiDqQO4PnYwJdfRCONbjAa4Xdl5Fs40aIazHt3mf+hfIoC9dXmdJnPUE7DpP5
+          03Y+MYEfGx0jviaM2Vgr5KDl7cDiNAsZHnW9gcN12DTFWu8ugzwpi4v5ufYeDVVb
+          sTO16lHGcjvFuArUKspiI4sYD1Ak+ZeG2NeDE8gUAmYB6/YkJGESxVUDxAc5plon
+          zxA1SBR6m1b9Z1anqewRF0TNIaug//tkW7FZSzGTBYK9ooId8frnxLk8WEzd6Xot
+          5CycTryJwbOKlEAkker6QzZd8JEgcz6TtfMFSpcnjV0BAgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
           key = serialization.load_pem_public_key(pem)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size >= 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
+          assert hashlib.sha256(der).hexdigest() == '336caafad87595c94f21b85e2b4a1b810e4ccba1176b47090cc74e6d8c98c196'
           Path('recipient.pem').write_bytes(pem)
-          print('Public recipient matched the private operator backup.')
+          Path('operator-public.pem').write_bytes(pem)
+          print('Public recipient matched the delivered private operator backup.')
           PY
       - name: Preserve Telegram role boundaries and run regression check
         run: |
@@ -97,7 +109,7 @@ jobs:
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(env) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert env['format'] == scan.FORMAT
-          assert env['key_id'] == 'b16696094dff4a886a844afa24b7fb036f60e3516da8b045135ff7d29a619393'
+          assert env['key_id'] == '336caafad87595c94f21b85e2b4a1b810e4ccba1176b47090cc74e6d8c98c196'
           assert len(base64.b64decode(env['nonce'], validate=True)) == 12
           assert len(base64.b64decode(env['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(env['ciphertext'], validate=True)) >= 16
