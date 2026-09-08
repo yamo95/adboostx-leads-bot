@@ -1,0 +1,47 @@
+name: Publisher Delivery - Retire Duplicate Experiments
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-delivery-cleanup-143e7625.yml]
+  workflow_dispatch:
+permissions:
+  actions: write
+jobs:
+  retire:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Disable only superseded publisher workflows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          assert repo == 'yamo95/adboostx-leads-bot'
+          old = {
+              'admaven-operator-b1669609.yml', 'contact-desk-62823.yml',
+              'publisher-contacts-live.yml', 'publisher-contacts-operational.yml',
+              'publisher-delivered.yml', 'publisher-desk-production.yml',
+              'publisher-operator-06627b.yml', 'publisher-private-viewer.yml',
+              'publisher-private-workspace.yml'
+          }
+          active = 'publisher-delivery-143e7625.yml'
+          api = 'https://api.github.com/repos/' + repo
+          headers = {'Authorization': 'Bearer '+os.environ['GITHUB_TOKEN'], 'Accept':'application/vnd.github+json', 'User-Agent':'PublisherDeliveryCleanup/1.0'}
+          def request(method, path):
+              r = urllib.request.Request(api+path, method=method, headers=headers)
+              with urllib.request.urlopen(r, timeout=25) as response:
+                  return json.load(response) if response.status != 204 else None
+          workflows = request('GET', '/actions/workflows?per_page=100')['workflows']
+          target = next((w for w in workflows if w['path'].endswith('/'+active)), None)
+          assert target is not None and target['state'] == 'active', 'Production workflow must stay active'
+          changed = []
+          for workflow in workflows:
+              name = workflow['path'].rsplit('/',1)[-1]
+              if name in old and workflow['state'] == 'active':
+                  request('PUT', '/actions/workflows/'+str(workflow['id'])+'/disable')
+                  changed.append(name)
+          print(json.dumps({'kept_active':active,'disabled_superseded':changed,'source_and_reports_deleted':False}, indent=2))
+          PY
