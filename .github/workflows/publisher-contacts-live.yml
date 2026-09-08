@@ -8,6 +8,7 @@ on:
       - publisher_cloud/test_scan.py
       - publisher_cloud/requirements.txt
       - publisher_cloud/seeds.txt
+      - publisher_cloud/recipient-984a656b.pem
       - .github/workflows/publisher-contacts-live.yml
   workflow_dispatch:
     inputs:
@@ -42,31 +43,20 @@ jobs:
           persist-credentials: false
       - name: Install pinned runtime
         run: python3 -m pip install -r requirements.txt
-      - name: Verify private contact desk public key
+      - name: Verify downloadable private viewer public key
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric import rsa
-          raw = b'''-----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAl89BSsuJNJX63Tvo+dV8
-          xZuItgakLlsofifPcJwznso1lsRsczNf74H3JYkXp5B10ud8dCXx9EA9HOnbLalI
-          e+pu5nUpkC8vsKyhbQ5ysAq6Ap7UvYtHzErvffQ1c0QPMPyusgBjYYwquKAsb/QX
-          swjecAO/BFSO/MwnkSfjotFN6kjmPa8LZUSxXHQMniT5DkUVTvWu/5AILc12s3qa
-          UGr4fEEMW8mJD2AjobJsn0LzIPMGi+Iiw9EZTKIT+ZrEul0nvy1/kq4rCxdHoWbt
-          wi+hXmk+HO1D1gYN1acVnWfelLYuDQZhN5rEIhVGqi4zqFm+tQPzMF23g6OQsQgf
-          4TVSYrqa6iZ+6Qn4IuF+mkCMEhoffgehUEXkeSS90pj8zkfm/4yxdPNRjZxhwzvR
-          HTBNfZP5AzR1lJaUXrjmd05iVtr/1zsaYsGloJkBVI4fofTaLfo3V+bpvJ3aZ14Q
-          jYfz9IWHlfVeTL8N0j4VAcm3PT5nzXEoKKt8KZJL2R5fAgMBAAE=
-          -----END PUBLIC KEY-----
-          '''
+          raw = Path('recipient-984a656b.pem').read_bytes()
           key = serialization.load_pem_public_key(raw)
           assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
           der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-          assert hashlib.sha256(der).hexdigest() == '62823c12a92dc0b2615b7de4d1dc208085cd427049e850be798929196db7c5d9'
+          assert hashlib.sha256(der).hexdigest() == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
           Path('recipient.pem').write_bytes(raw)
-          print('Private contact desk public key verified. No private key is on the runner.')
+          print('Private viewer public key verified. No private key is on the runner.')
           PY
       - name: Test extraction and encryption
         run: python3 -m unittest -v test_scan
@@ -84,7 +74,7 @@ jobs:
           encrypted = json.loads((folder / 'results.encrypted.json').read_text())
           assert set(encrypted) == {'format','key_id','wrapped_key','nonce','ciphertext'}
           assert encrypted['format'] == scan.FORMAT
-          assert encrypted['key_id'] == '62823c12a92dc0b2615b7de4d1dc208085cd427049e850be798929196db7c5d9'
+          assert encrypted['key_id'] == '984a656ba6cef2416ea7a7a199835e69dd288b0f285c47ec2be35a0cad9630ea'
           assert len(base64.b64decode(encrypted['nonce'], validate=True)) == 12
           assert len(base64.b64decode(encrypted['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(encrypted['ciphertext'], validate=True)) >= 16
@@ -98,7 +88,7 @@ jobs:
           PY
       - name: Retain encrypted acceptance report and public source
         if: ${{ always() && github.event_name != 'schedule' }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: publisher-delivery-${{ github.run_id }}
           path: |
