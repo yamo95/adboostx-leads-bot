@@ -42,6 +42,7 @@ def local_context(tag):
     return own[:350]
 
 def purpose(value,context,source_url):
+    # Address role has precedence. A footer containing a DMCA navigation item must not poison every address.
     prefix=value.split('@')[0].lower() if '@' in value else ''
     if LEGAL_TERMS.search(prefix) or LEGAL_TERMS.search(urlsplit(source_url).path):return 'legal_only'
     if SEO_TERMS.search(context):return 'seo_service'
@@ -60,20 +61,26 @@ def normalized_email(value):
     if domain in BAD_EMAIL_DOMAINS or any(domain.endswith('.'+x) for x in BAD_EMAIL_DOMAINS):return None
     if re.search(r'\.(?:png|jpe?g|webp|gif|svg|css|js)$',email,re.I):return None
     if re.match(r'^[a-f0-9]{24,}@',email,re.I):return None
+    # Preserve local-part case; do not invent address variants.
     return email
 
+
 def messaging_key(c):
+    """Telegram public handles are case-insensitive; phones already normalized."""
     return (c.kind,c.value.casefold() if c.kind=='telegram' else c.value,c.source_url)
 
 def normalized_phone(raw):
+    # Do not strip arbitrary letters to manufacture a plausible phone number.
     raw=unquote(str(raw)).strip()
     if not re.fullmatch(r'\+?[0-9][0-9 ()\-.]{6,24}',raw):return None
     digits=re.sub(r'[^0-9]','',raw)
     if not re.fullmatch(r'[1-9][0-9]{7,14}',digits):return None
+    # Known template numbers and repeated digits. Never guess a replacement.
     if digits in {'1234567890','12345678901','18001234567','18001234568'} or len(set(digits))==1:return None
     return '+'+digits
 
 def whatsapp_link(href,label,context,source_url):
+    """Preserve unresolved business short links; never infer their phone number."""
     try:
         p=urlsplit(href);host=hostname(href);path=unquote(p.path).strip('/');port=p.port
     except ValueError:return []
@@ -109,6 +116,7 @@ def whatsapp_link(href,label,context,source_url):
     return [out]
 
 def printed_messaging_contacts(soup,url):
+    """Only explicit labelled messaging data in small visible blocks, not forms/scripts."""
     found=[];seen=set()
     for node in soup.find_all(['p','li','div','td','address']):
         if node.find_parent(['form','script','style']) or node.find(['input','textarea','select']):continue
@@ -121,6 +129,7 @@ def printed_messaging_contacts(soup,url):
                 cs=whatsapp_link('https://wa.me/'+phone[1:],phone,block,url)
                 for c in cs:c.method='labelled_messaging_text'
                 found+=cs
+        # A bare @name is ambiguous unless explicitly labelled Telegram/TG.
         for m in re.finditer(r'\b(?:telegram|tg)\s*(?:support|business|contact|admin)?\s*[:\-\u2013\u2014]?\s*@([A-Za-z][A-Za-z0-9_]{2,31})\b',block,re.I):
             cs=contact_from_link('https://t.me/'+m.group(1),'Telegram',block,url)
             for c in cs:c.method='labelled_messaging_text'
@@ -195,6 +204,7 @@ def parse_page(raw,url):
                 ts=obj.get('@type',[]);ts=[ts] if isinstance(ts,str) else ts
                 types.extend(str(x) for x in ts)
                 if any(x in {'SoftwareApplication','MobileApplication'} for x in ts) and obj.get('name'):names.append(clean(obj['name']))
+                # Only organization contact objects, not authors, reviewers or arbitrary embedded person profiles.
                 if any(x in {'Organization','ContactPoint','Corporation'} for x in ts):
                     if isinstance(obj.get('email'),str):
                         em=normalized_email(obj['email'].replace('mailto:',''))
@@ -234,6 +244,7 @@ def parse_page(raw,url):
                 value=raw if re.match(r'^(?:https?://|whatsapp://|tg://)',raw,re.I) else prefix+raw.lstrip('@+')
                 contacts.extend(contact_from_link(value,'',local_context(node),url))
     for tag in soup(['script','style','noscript','template','svg']):tag.decompose()
+    # Never scrape comment author lists / third-party post bodies for contact attribution.
     for node in soup.select('#comments,.comments,.comment-list,.comment-body,.review-list,template,[hidden],[aria-hidden="true"]'):node.decompose()
     contacts.extend(printed_messaging_contacts(soup,url))
     public_text_soup=BeautifulSoup(str(soup),'html.parser')
@@ -246,11 +257,13 @@ def parse_page(raw,url):
         if em:
             evidence=deob[max(0,match.start()-90):match.end()+110]
             contacts.append(Contact('email',em,url,evidence,'visible_text' if deob==text else 'obfuscated_text',purpose(em,evidence,url),contact_url='mailto:'+em))
+    # Plain printed messenger links, excluding scripts.
     for match in re.finditer(r'(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog|wa\.me|wa\.link)/[^\s<>"\)\]]+',text):
         val=match.group().rstrip('.,;');ctx=text[max(0,match.start()-70):match.end()+70]
         contacts.extend(contact_from_link(val if '://' in val else 'https://'+val,val,ctx,url))
     contact_page=bool(CONTACT_TERMS.search(urlsplit(url).path+' '+title+' '+' '.join(headings[:2])))
     for form in soup.select('form'):
+        # Search/login/newsletter forms are not contact forms. Require a message textarea.
         if form.select_one('textarea') and (contact_page or CONTACT_TERMS.search(clean(form.get_text(' ',strip=True)))):
             contacts.append(Contact('contact_form',url,url,clean(form.get_text(' ',strip=True))[:350] or title,'html_form','contact',contact_url=url))
     best={}
@@ -282,6 +295,7 @@ def external_candidates(parsed,base,limit):
     if parsed.nofollow:return result
     for link in parsed.links:
         if link['nofollow'] or within_site(link['url'],base) or excluded(link['url']):continue
+        # Editorial partner/mirror/project links, NOT ad scripts, click trackers, arbitrary affiliate hops.
         text=link['label']+' '+link['context']
         if not re.search(r'mirror|new.domain|official.site|current.domain|domaine.actuel|acc[e\u00e9]dez|partner|friend|related.app|recommended.site|alternative|mod.site',text,re.I):continue
         try:clean_url=normalize_url(link['url'])

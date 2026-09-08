@@ -9,7 +9,10 @@ from .parse import clean,purpose,messaging_key
 HANDLE=re.compile(r'(?<![\w@])@([A-Za-z][A-Za-z0-9_]{2,31})\b')
 NEGATIVE=re.compile(r'no\s+(?:ads|advertising|promotions)|do\s+not\s+contact|not\s+accepting|\u043d\u0435\s+\u043f\u0438\u0441\u0430\u0442\u044c',re.I)
 
+
 def bio_contacts(description,source):
+    """Interpret each role clause independently; no 100-character cross-role window."""
+    # Work on a copy: preserve explicit line breaks, and include href-only handles.
     desc=BeautifulSoup(str(description),'html.parser')
     for a in desc.select('a[href]'):
         match=re.fullmatch(r'https?://(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{2,31})/?',a['href'])
@@ -23,6 +26,7 @@ def bio_contacts(description,source):
         prior_end=0;last_role_context=''
         for m in HANDLE.finditer(line):
             before=clean(line[prior_end:m.start()]);prior_end=m.end()
+            # A label on its own line can introduce the next handle, but not a whole paragraph.
             context=before or (previous if len(previous)<90 and not HANDLE.search(previous) else '')
             if last_role_context and re.fullmatch(r'(?:[-\u2013\u2014&,]+|and|or)',context,re.I):
                 context=last_role_context
@@ -38,7 +42,15 @@ def bio_contacts(description,source):
         previous=line
     return result
 
+
 async def inspect_public_telegram(contacts,fetcher,max_profiles=6):
+    """Two hops at most: site -> public channel bio -> labelled contact preview.
+
+    The single request cap covers all contacts/hops. Found contacts stay REVIEW
+    unless a separately reviewed first-party source exists. Bots are recorded
+    but not started. An invitation is never joined; only its public HTML preview
+    may be inspected. No channel posts or private member information are read.
+    """
     max_profiles=max(0,min(8,int(max_profiles)))
     output=list(contacts);queue=deque((c,0) for c in output if c.kind=='telegram')
     seen=set();known={messaging_key(c) for c in output};calls=0
@@ -62,11 +74,13 @@ async def inspect_public_telegram(contacts,fetcher,max_profiles=6):
             c.notes.append('Public preview is a channel/group, not a confirmed direct business contact.')
             if depth==0 and description:
                 additions=bio_contacts(description,c.value)
+                # At most four labelled contacts per bio; the total fetch cap still applies.
                 for new in additions[:4]:
                     if new.value.casefold()==c.value.casefold() or messaging_key(new) in known:continue
                     new.notes.append('Evidence chain: '+c.source_url+' -> '+c.value+' -> '+new.value)
                     new.verification='profile_not_checked_budget'
                     known.add(messaging_key(new));output.append(new)
+                    # Explicit business entries precede generic support entries when budget is tight.
                     if new.purpose=='business':queue.appendleft((new,1))
                     else:queue.append((new,1))
         elif re.search(r'if you have telegram, you can contact|send message',alltext,re.I):

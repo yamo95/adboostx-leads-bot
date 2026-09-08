@@ -12,6 +12,7 @@ SHORT=re.compile(r'url.shortener|link.shortener|shorten.{0,15}links|shorten.{0,1
 AGENCY=re.compile(r'(?:seo|digital.marketing|web.design).{0,20}(?:agency|services)|lead.generation.software',re.I)
 NEWS=re.compile(r'news|reviews|journal|blog|guide|best.{0,25}sites|how.to',re.I)
 
+
 def classify(pages: list[Parsed]) -> dict:
     if not pages:return {'classification':'REVIEW','category':'unknown','relevance':0,'reasons':['No readable page; absence of access is not evidence of irrelevance.']}
     home=pages[0]
@@ -30,6 +31,7 @@ def classify(pages: list[Parsed]) -> dict:
         score=15+35*bool(APK.search(primary))+30*download+20*app_schema
         names=set(n.lower() for p in pages for n in p.schema_names)
         app_sections=sum(bool(re.search(r'games|apps|categories|all.apps',x['label'],re.I)) for x in links)
+        # Single app is explicitly allowed; no minimum catalog size requirement.
         category='apk_catalog' if app_sections>=3 or len(names)>3 else 'apk_single_app'
         candidates.append((score,category,operational,['APK / Android evidence','Download entry point present' if download else 'No download entry point confirmed','Single-app sites are accepted' if category=='apk_single_app' else 'Multiple app / catalog navigation signals']))
     if SPORT.search(primary+' '+text) and LIVE.search(primary+' '+text):

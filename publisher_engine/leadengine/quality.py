@@ -17,6 +17,7 @@ class MailDNS:
                 else:result='mx_present_mailbox_unverified'
             except dns.resolver.NXDOMAIN:result='domain_not_found'
             except dns.resolver.NoAnswer:
+                # MX absence alone does not prove invalid mail delivery: RFC 5321 implicit MX.
                 result='no_mail_route'
                 for typ in ['A','AAAA']:
                     try:
@@ -61,6 +62,7 @@ async def score_contacts(contacts,site_url,cfg,dns_check=None):
         c.score=min(100,max(0,score))
         c.tier=('EXCLUDED' if c.purpose in {'legal_only','seo_service'} or c.score==0 else 'COMMUNITY' if c.purpose in {'community','community_invite','bot','social_profile'} else 'READY' if c.score>=cfg['quality']['ready_threshold'] else 'REVIEW')
     order=cfg['quality']['preferred_channels']
+    # Business applicability before channel preference; a channel must not outrank a real business email.
     contacts.sort(key=lambda x:({'READY':0,'REVIEW':1,'COMMUNITY':2,'EXCLUDED':3}.get(x.tier,4),
         0 if x.purpose=='business' else 1,
         order.index(x.kind) if x.kind in order else 99,-x.score))

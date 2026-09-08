@@ -105,6 +105,7 @@ class Fetcher:
             elif p.state=='ok' and not p.html.lstrip().lower().startswith(('<!doctype html','<html')):
                 parser=RobotFileParser();parser.set_url(origin+'/robots.txt');parser.parse(p.html.splitlines())
                 delay=parser.crawl_delay(self.ua) or parser.crawl_delay('*') or 0
+                # Excessive declared delays: defer rather than occupying a task indefinitely.
                 out=RobotsPolicy(delay<=60,parser,'ok' if delay<=60 else 'robots_delay_deferred',float(delay),tuple(parser.site_maps() or ()))
             elif p.status in {401,403}:out=RobotsPolicy(False,None,'robots_denied')
             else:out=RobotsPolicy(False,None,'robots_unavailable')
