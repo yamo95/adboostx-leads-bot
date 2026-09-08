@@ -1,0 +1,140 @@
+name: Publisher Contacts - Delivered System
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-delivered.yml]
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: Public seed batch
+        type: choice
+        options: [auto, all, '0', '1']
+        default: all
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+
+permissions:
+  contents: write
+concurrency:
+  group: publisher-delivered-system
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      PYTHONUNBUFFERED: '1'
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'all' }}
+    steps:
+      - name: Check out the live-tested scanner, not mutable staging files
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 7cec53c93e8af76aa1077a28b88190f3a59cafda
+          persist-credentials: false
+      - name: Install runtime
+        run: python3 -m pip install -r requirements.txt
+      - name: Verify delivered viewer public key
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          pem = b'''-----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsDuarXMC2yziPnOX9pWD
+          k2FCBi557pLRStREDi+emwTenId4xaOP8TaWNtSboCXUMzoVTfD7kcBI7+8Y8e/x
+          XCVyZXAqmaf1Nix/VzN0PO/vGO3arowf+4CtBEhhVhjeYG604snr76scDGK9oZAP
+          pfu7/qH8AMoBjEvRGGAPmiGx/7iSHZi3dT1PGg75jdbRKVV+9ZiKT/s0NTN0R8AC
+          P9Wg1cwP6ahMFI7ATeIYIL8nCO0y1BNeUpgraIS1/m/CkRrrYf3YzcBPg2HL7FpA
+          VIkLUR3NjGgUT8jwjggJy4DuzT2QoND/7PujNY6k9o4QfF9JYZimxVOTKYRr/qki
+          eyGNNi3C+3y/i3lEpnM1s6OMBj2tnEqjatVi8hJNMhLMjPBYeTPs6Tvc0gzIxImS
+          CpLoGja64+u/Wz9NnxmBBonGu6N7G0bnloBalbwRUmDwT55NAkVxnC+sMeis/CH6
+          snmhmUx4FqxiZJFZI6lRlrrhWIscksVz7Ws3ppW2btdvAgMBAAE=
+          -----END PUBLIC KEY-----
+          '''
+          key = serialization.load_pem_public_key(pem)
+          assert isinstance(key, rsa.RSAPublicKey) and key.key_size == 3072
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          Path('recipient.pem').write_bytes(pem)
+          print('Delivered viewer public key validated. No private key on runner.')
+          PY
+      - name: Test scanner safety and encryption
+        run: python3 -m unittest -v test_scan
+      - name: Scan and encrypt without repository credentials
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, json
+          import scan
+          original_seal = scan.seal
+          def compact(payload, public_key):
+              raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
+              packed = {'encoding':'gzip+base64','data':base64.b64encode(gzip.compress(raw, mtime=0)).decode()}
+              return original_seal(packed, public_key)
+          scan.seal = compact
+          raise SystemExit(scan.main())
+          PY
+      - name: Publish encrypted reports to an isolated results index
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re, time
+          from pathlib import Path
+          import scan
+          assert os.environ['GITHUB_REPOSITORY'] == 'yamo95/adboostx-leads-bot'
+          env = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert set(env) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert env['format'] == scan.FORMAT
+          assert env['key_id'] == 'eb9eb4640058a447025460219c89d7f417f7bf9c148d4c56d669eaf92ade4d5b'
+          assert len(base64.b64decode(env['nonce'], validate=True)) == 12
+          assert len(base64.b64decode(env['wrapped_key'], validate=True)) == 384
+          assert 16 <= len(base64.b64decode(env['ciphertext'], validate=True)) < 5000000
+          fields = {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          assert set(summary) <= fields and summary['run_id'] == os.environ['GITHUB_RUN_ID']
+          for key in ('seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites'):
+              assert type(summary[key]) is int and summary[key] >= 0
+          rid = os.environ['GITHUB_RUN_ID'] + '-' + os.environ.get('GITHUB_RUN_ATTEMPT','1')
+          assert re.fullmatch(r'[0-9]+-[0-9]+',rid)
+          path = 'publisher-delivered-results/runs/' + rid + '.json'
+          def store(path, payload, message):
+              for attempt in range(3):
+                  old = scan.gh('GET','contents/'+path+'?ref=main')
+                  body = {'message':message,'branch':'main','content':base64.b64encode(json.dumps(payload,indent=2).encode()).decode()}
+                  if old: body['sha'] = old['sha']
+                  try:
+                      scan.gh('PUT','contents/'+path,body)
+                      return
+                  except RuntimeError:
+                      if attempt == 2: raise
+                      time.sleep(2)
+          store(path,env,'Store delivered encrypted publisher report '+rid)
+          index_path = 'publisher-delivered-results/index.json'
+          old = scan.gh('GET','contents/'+index_path+'?ref=main')
+          index = json.loads(base64.b64decode(old['content'])) if old else {'format':1,'runs':[]}
+          index['runs'] = ([{'path':path,'summary':summary}] + [r for r in index['runs'] if r['path'] != path])[:60]
+          index['updated_at'] = scan.stamp()
+          index['note'] = 'Encrypted reports. Private viewer required. Old ciphertext may remain in Git history.'
+          store(index_path,index,'Update delivered publisher results index')
+          print('Encrypted report and aggregate counters published; no plain contacts or private keys uploaded.')
+          PY
+      - name: Retain encrypted acceptance report
+        if: ${{ always() && github.event_name != 'schedule' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: publisher-delivered-${{ github.run_id }}
+          path: |
+            publisher_cloud/sealed/*.json
+            publisher_cloud/scan.py
+            publisher_cloud/test_scan.py
+            publisher_cloud/requirements.txt
+            publisher_cloud/seeds.txt
+          retention-days: 3
+          if-no-files-found: error
