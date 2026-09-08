@@ -1,0 +1,23 @@
+name: Activate delivered Publisher Desk
+'on':
+  push:
+    branches: [main]
+    paths: [.github/workflows/activate-desk-89446fbd.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  activate:
+    if: github.repository == 'yamo95/adboostx-leads-bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Enable and run only the approved publisher production workflow
+        run: |
+          set -eu
+          gh api repos/yamo95/adboostx-leads-bot/actions/workflows/353412778 --jq '{id,name,path,state}'
+          gh api --method PUT repos/yamo95/adboostx-leads-bot/actions/workflows/353412778/enable
+          printf '%s' '{"ref":"main","inputs":{"batch":"all"}}' | gh api --method POST repos/yamo95/adboostx-leads-bot/actions/workflows/353412778/dispatches --input -
+          gh api repos/yamo95/adboostx-leads-bot/actions/workflows/353412778 --jq '{id,name,path,state}'
