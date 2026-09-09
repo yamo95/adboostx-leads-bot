@@ -57,3 +57,11 @@ render=function(){
     if(reason&&cards[i])cards[i].append(element('p',explanations[reason],'warning'));
   });
 };
+
+// app.js binds these controls before this review wrapper exists. Replace only
+// those original handlers so filter events retain review explanations too.
+for (const id of ['search','channel','quality','follow','fit','newOnly']) {
+  const event = id === 'search' ? 'input' : 'change';
+  $(id).removeEventListener(event, priorRender);
+  $(id).addEventListener(event, render);
+}
