@@ -7,9 +7,11 @@ on:
       - .github/workflows/b219-ui-checks.yml
       - docs/app.js
       - docs/review.js
+      - docs/round-search.js
       - docs/index.html
       - docs/style.css
       - tests/test_review_events.cjs
+      - tests/test_search_round.cjs
       - tests/browser_smoke.py
   workflow_dispatch:
 
@@ -31,6 +33,8 @@ jobs:
           persist-credentials: false
       - name: Verify review explanations survive all filter events
         run: node tests/test_review_events.cjs
+      - name: Verify search dispatch, strict messaging target and first-added dates
+        run: node tests/test_search_round.cjs
       - name: Install pinned browser test dependency
         run: |
           python3 -m pip install playwright==1.57.0
