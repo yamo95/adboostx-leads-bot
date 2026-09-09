@@ -79,8 +79,8 @@ def from_description(desc,source,via):
 
 def preview_key(url):
     p=urlsplit(url)
-    path=p.path if p.path.startswith(('/+','/joinchat/')) else p.path.lower()
-    return p.hostname.lower()+path
+    path=p.path.lower() if p.hostname in scan.TG_HOSTS and not p.path.startswith(('/+','/joinchat/')) else p.path
+    return p.hostname.lower()+path+('?' + p.query if p.query else '')
 
 
 async def get_preview(fetcher,url):
