@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate page (next continues the previous 500-site acceptance page)
+        description: Candidate page (deep checks targeted candidates and additional game/APK feeds)
         type: choice
-        options: [auto, next, all, '0', '1', '2', '3']
-        default: next
+        options: [auto, deep, next, all, '0', '1', '2', '3']
+        default: deep
   schedule:
     - cron: '0 9,18 * * *'
       timezone: Asia/Jerusalem
@@ -28,7 +28,7 @@ jobs:
       run:
         working-directory: publisher_cloud
     env:
-      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'next' }}
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'deep' }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -39,7 +39,7 @@ jobs:
       - name: Load reviewed capacity adapters only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: c5a80dda450581dc3673b60124b1797c5f57740c
+          ref: 1801073c4fb60b7cbd141c9aaf78d5761a136c29
           path: quantity-config
           sparse-checkout: |
             publisher_cloud/quantity_expansion.py
@@ -50,9 +50,12 @@ jobs:
             publisher_cloud/test_growth_profile.py
             publisher_cloud/continuation_profile.py
             publisher_cloud/test_continuation_profile.py
+            publisher_cloud/deep_profile.py
+            publisher_cloud/test_deep_profile.py
+            publisher_cloud/deep_candidates.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Install, preserve contact-role boundaries, and run regression tests
+      - name: Install and verify unchanged extraction plus new discovery
         run: |
           python3 -m pip install -r requirements.txt
           cp ../quantity-config/publisher_cloud/quantity_expansion.py .
@@ -63,6 +66,9 @@ jobs:
           cp ../quantity-config/publisher_cloud/test_growth_profile.py .
           cp ../quantity-config/publisher_cloud/continuation_profile.py .
           cp ../quantity-config/publisher_cloud/test_continuation_profile.py .
+          cp ../quantity-config/publisher_cloud/deep_profile.py .
+          cp ../quantity-config/publisher_cloud/test_deep_profile.py .
+          cp ../quantity-config/publisher_cloud/deep_candidates.json .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -75,7 +81,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -104,8 +110,8 @@ jobs:
           assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           PY
-      - name: Scan next candidate page without repository credentials
-        run: python3 continuation_profile.py
+      - name: Discover and scan targeted public publisher sources without credentials
+        run: python3 deep_profile.py
       - name: Publish authenticated ciphertext only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -123,7 +129,7 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          cap = 500 if os.environ['SEED_BATCH'] in {'all','next'} else 240
+          cap = 500 if os.environ['SEED_BATCH'] in {'all','next','deep'} else 240
           assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
           scan.publish(envelope, summary)
@@ -139,6 +145,7 @@ jobs:
             publisher_cloud/scanner_core.py
             publisher_cloud/*profile.py
             publisher_cloud/quantity_expansion.py
+            publisher_cloud/deep_candidates.json
             publisher_cloud/test_*.py
             publisher_cloud/requirements.txt
             publisher_cloud/leadengine/*.py
