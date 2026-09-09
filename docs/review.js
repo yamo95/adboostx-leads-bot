@@ -19,6 +19,10 @@ function reviewReason(c){
   if(c.channel==='whatsapp' && domain==='sportzfytvs.net' && String(c.contact)==='+3167620901')return 'INCOMPLETE_PHONE';
   if(c.channel==='email'){
     const value=String(c.contact||'').toLowerCase();
+    // Service-provider routes are retained for review, not publisher outreach.
+    // Sources: https://guestpost.cc/contact-us/ and https://www.domain-evo.com/
+    if(value.endsWith('@guestpost.cc'))return 'SEO_SERVICE_CONTACT';
+    if(value.endsWith('@domain-evo.com'))return 'DOMAIN_SERVICE_CONTACT';
     if(/\.(?:example|invalid|test|localhost)$/.test(value))return 'PLACEHOLDER';
     if(domain==='pastelink.net' && value.endsWith('@stopitnow.org.uk'))return 'UNRELATED_HELP_ORGANIZATION';
     if(domain==='moddroid.com' && value==='contact@moddroid.com' && /app and game requests/i.test(c.evidence||''))return 'NON_OUTREACH_PURPOSE';
@@ -37,6 +41,8 @@ const priorRender=render;
 render=function(){
   priorRender();
   const explanations={
+    SEO_SERVICE_CONTACT:'הכתובת משויכת לספק קידום אתרים; הסמכות לטפל במונטיזציה של האתר לא אומתה.',
+    DOMAIN_SERVICE_CONTACT:'הכתובת משויכת לספק רישום דומיינים, ולא לאיש קשר עסקי מאומת של האתר.',
     INCOMPLETE_PHONE:'המספר שפורסם נראה חסר; נשמר לבדיקה ולא נספר כמסלול וואטסאפ לפנייה.',
     UNRELATED_HELP_ORGANIZATION:'ארגון סיוע חיצוני שמוזכר בעמוד, לא קונטקט של בעל האתר.',
     ADJACENT_SITE_SCOPE:'אתר משיק לפרופיל המבוקש; אינו נכלל ברשימת הפנייה המועדפת.',
