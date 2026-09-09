@@ -11,7 +11,7 @@ const REVIEW_PURPOSE=/^(?:abuse|dmca|legal|privacy|copyright|takedown|security|n
 const REVIEW_PLACEHOLDER=/^(?:you|yourname|youremail|your-email|user|username|test|example|name)@|@(?:example\.(?:com|org|net)|domain\.com|email\.com|test\.com)$/i;
 // These discovered sites are software tools, enterprise storage or institutional
 // collections, not the requested core publisher profile. Keep them review-only.
-const REVIEW_SCOPE=new Set(['rclone.org','raidrive.com','cyberduck.io','multcloud.com','clonr.co','dropbox.com','mega.io','pcloud.com','jumpshare.com','sweet.tv','rts.ch','jfc.org.il','cinematheque-bretagne.bzh','abandonware-magazines.org']);
+const REVIEW_SCOPE=new Set(['rclone.org','raidrive.com','cyberduck.io','multcloud.com','clonr.co','dropbox.com','mega.io','pcloud.com','jumpshare.com','sweet.tv','rts.ch','jfc.org.il','cinematheque-bretagne.bzh','abandonware-magazines.org','tvgazeta.com.br','joj.sk','arcoiris.tv','retinalatina.org','rtvcplay.co','stvr.sk']);
 const REVIEW_MAIL=/[A-Z0-9.!#$%&\x27*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,24}/gi;
 function reviewReason(c){
   const domain=String(c.domain||'').toLowerCase().replace(/^www\./,'');
@@ -19,7 +19,8 @@ function reviewReason(c){
   if(c.channel==='email'){
     const value=String(c.contact||'').toLowerCase();
     if(REVIEW_PURPOSE.test(value.split('@')[0]))return 'NON_OUTREACH_PURPOSE';
-    if(REVIEW_PLACEHOLDER.test(value))return 'PLACEHOLDER';
+    if(REVIEW_PLACEHOLDER.test(value)||/^[*\u2022]{3,}@/.test(value))return 'PLACEHOLDER';
+    if(domain==='rutube.ru'&&/^(?:help|support)@/.test(value))return 'NON_OUTREACH_PURPOSE';
     if(domain==='samehadaku.care'&&value.endsWith('@poltekuniversity.us'))return 'UNEXPECTED_THIRD_PARTY_DOMAIN';
     const displayed=String(c.evidence||'').match(REVIEW_MAIL)||[];
     if(displayed.length&&!displayed.some(v=>v.toLowerCase()===value))return 'DISPLAY_LINK_MISMATCH';
