@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate batch (all is a bounded 240-site acceptance run)
+        description: Candidate batch (all is a bounded 500-site acceptance run)
         type: choice
         options: [auto, all, '0', '1']
         default: all
@@ -39,13 +39,15 @@ jobs:
       - name: Load reviewed capacity adapters only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: afe990c1b0b0d5a9bac4625e8267d765868d1d84
+          ref: 7dc1ca70614bf789f4ab392f88a79cf68525a502
           path: quantity-config
           sparse-checkout: |
             publisher_cloud/quantity_expansion.py
             publisher_cloud/test_quantity_expansion.py
             publisher_cloud/scale_profile.py
             publisher_cloud/test_scale_profile.py
+            publisher_cloud/growth_profile.py
+            publisher_cloud/test_growth_profile.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Install, preserve contact-role boundaries, and run regression tests
@@ -55,6 +57,8 @@ jobs:
           cp ../quantity-config/publisher_cloud/test_quantity_expansion.py .
           cp ../quantity-config/publisher_cloud/scale_profile.py .
           cp ../quantity-config/publisher_cloud/test_scale_profile.py .
+          cp ../quantity-config/publisher_cloud/growth_profile.py .
+          cp ../quantity-config/publisher_cloud/test_growth_profile.py .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -67,7 +71,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -96,8 +100,8 @@ jobs:
           assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           PY
-      - name: Scan rotating candidates with unchanged contact-quality rules
-        run: python3 scale_profile.py
+      - name: Discover new candidate families and scan without repository credentials
+        run: python3 growth_profile.py
       - name: Publish authenticated ciphertext only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -115,12 +119,12 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          cap = 240 if os.environ['SEED_BATCH'] == 'all' else 120
+          cap = 500 if os.environ['SEED_BATCH'] == 'all' else 240
           assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
           scan.publish(envelope, summary)
           PY
-      - name: Retain encrypted acceptance data
+      - name: Retain encrypted acceptance data and aggregate growth diagnostics
         if: ${{ always() && github.event_name != 'schedule' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
