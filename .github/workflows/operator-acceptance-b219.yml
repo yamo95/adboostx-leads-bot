@@ -1,4 +1,5 @@
 name: Publisher Contacts B219 - Scheduled Scans
+run-name: ${{ inputs.batch == 'search' && format('B219 search {0} page {1}', inputs.round_id, inputs.page) || github.workflow }}
 on:
   push:
     branches: [main]
@@ -7,10 +8,22 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate page (enrich rechecks site-linked public contact descriptions)
+        description: Candidate page (search is controlled by the existing results page)
         type: choice
-        options: [auto, enrich, deep, next, all, '0', '1', '2', '3']
+        options: [auto, enrich, deep, next, all, search, '0', '1', '2', '3']
         default: enrich
+      round_id:
+        description: Search round ID supplied by the results page
+        type: string
+        default: ''
+      page:
+        description: Non-wrapping search page, 0 through 12
+        type: string
+        default: '0'
+      pool_hash:
+        description: Candidate pool fingerprint from the preceding encrypted report
+        type: string
+        default: ''
   schedule:
     - cron: '0 9,18 * * *'
       timezone: Asia/Jerusalem
@@ -29,6 +42,9 @@ jobs:
         working-directory: publisher_cloud
     env:
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'enrich' }}
+      SEARCH_ROUND_ID: ${{ inputs.round_id }}
+      SEARCH_PAGE: ${{ inputs.page || '0' }}
+      SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -59,6 +75,16 @@ jobs:
             publisher_cloud/additional_candidates_20260909.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - name: Load reviewed interactive search adapter only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 7ea1451a5d3312ec451d85b1aecc19d246e0f239
+          path: search-config
+          sparse-checkout: |
+            publisher_cloud/search_round.py
+            publisher_cloud/test_search_round.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Install and test discovery and public-contact extraction
         run: |
           python3 -m pip install -r requirements.txt
@@ -77,6 +103,8 @@ jobs:
           cp ../quantity-config/publisher_cloud/test_messaging_enrichment.py .
           cp ../quantity-config/publisher_cloud/enrichment_candidates.json .
           cp ../quantity-config/publisher_cloud/additional_candidates_20260909.json .
+          cp ../search-config/publisher_cloud/search_round.py .
+          cp ../search-config/publisher_cloud/test_search_round.py .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -89,7 +117,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -141,8 +169,8 @@ jobs:
           Path('recipient.pem').write_bytes(raw)
           PY
       - name: Scan websites and their public contact previews without credentials
-        run: python3 messaging_enrichment.py
-      - name: Publish authenticated ciphertext only
+        run: python3 search_round.py
+      - name: Publish authenticated ciphertext and retain report history
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -150,6 +178,7 @@ jobs:
           import base64, json, os
           from pathlib import Path
           import scan
+          import search_round
           envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
@@ -159,10 +188,11 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          cap = 500 if os.environ['SEED_BATCH'] in {'all','next','deep','enrich'} else 240
+          mode = os.environ['SEED_BATCH']
+          cap = 120 if mode == 'search' else 500 if mode in {'all','next','deep','enrich'} else 240
           assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
-          scan.publish(envelope, summary)
+          search_round.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data and public testable adapters
         if: ${{ always() && github.event_name != 'schedule' }}
@@ -179,6 +209,7 @@ jobs:
             publisher_cloud/additional_candidates_20260909.json
             publisher_cloud/messaging_enrichment.py
             publisher_cloud/enrichment_candidates.json
+            publisher_cloud/search_round.py
             publisher_cloud/test_*.py
             publisher_cloud/requirements.txt
             publisher_cloud/leadengine/*.py
