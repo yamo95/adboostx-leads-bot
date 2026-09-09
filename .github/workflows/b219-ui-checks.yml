@@ -1,0 +1,47 @@
+name: B219 Existing App UI Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/b219-ui-checks.yml
+      - docs/app.js
+      - docs/review.js
+      - docs/index.html
+      - docs/style.css
+      - tests/test_review_events.cjs
+      - tests/browser_smoke.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b219-ui-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Read existing app and synthetic-only regression tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify review explanations survive all filter events
+        run: node tests/test_review_events.cjs
+      - name: Install pinned browser test dependency
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps --only-shell chromium
+      - name: Verify hosted app and ciphertext access on desktop and emulated mobile
+        run: python3 tests/browser_smoke.py --docs docs --hosted --out browser-checks
+      - name: Retain synthetic-only browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: b219-ui-${{ github.run_id }}
+          path: browser-checks/*
+          retention-days: 3
+          if-no-files-found: warn
