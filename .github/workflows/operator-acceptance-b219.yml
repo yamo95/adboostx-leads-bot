@@ -39,7 +39,7 @@ jobs:
       - name: Load reviewed discovery and contact enrichment adapters
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 7304fa343dd44a38d9aede5efa28f85d0f63d6d1
+          ref: d1f1151aca151f6c7d45f7e84f9a2677f08c7d7e
           path: quantity-config
           sparse-checkout: |
             publisher_cloud/quantity_expansion.py
@@ -56,6 +56,7 @@ jobs:
             publisher_cloud/messaging_enrichment.py
             publisher_cloud/test_messaging_enrichment.py
             publisher_cloud/enrichment_candidates.json
+            publisher_cloud/additional_candidates_20260909.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Install and test discovery and public-contact extraction
@@ -75,6 +76,7 @@ jobs:
           cp ../quantity-config/publisher_cloud/messaging_enrichment.py .
           cp ../quantity-config/publisher_cloud/test_messaging_enrichment.py .
           cp ../quantity-config/publisher_cloud/enrichment_candidates.json .
+          cp ../quantity-config/publisher_cloud/additional_candidates_20260909.json .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -103,6 +105,28 @@ jobs:
           assert found['@HelpDemo']['role'] == 'support'
           assert found['@AdsDemo']['role'] == 'business'
           print('Role-boundary regression passed.')
+          PY
+      - name: Add public candidates without discarding existing scan targets
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import deep_profile as deep
+          additions = json.loads(Path('additional_candidates_20260909.json').read_text())
+          assert isinstance(additions, list) and len(additions) == 54
+          checked = deep.target_rows(additions)
+          assert len(checked) == len(additions), 'Invalid or duplicate public candidate URL'
+          assert all(isinstance(u, str) and '@' not in u for u in additions)
+          for filename in ('deep_candidates.json', 'enrichment_candidates.json'):
+              path = Path(filename)
+              previous = json.loads(path.read_text())
+              rows = deep.target_rows(previous + additions)
+              existing_hosts = {deep.growth.scan.host(u) for u in previous}
+              merged_hosts = {deep.growth.scan.host(r['url']) for r in rows}
+              assert existing_hosts <= merged_hosts
+              assert len(rows) <= 500
+              path.write_text(json.dumps([r['url'] for r in rows], indent=2))
+              print(json.dumps({'candidate_list':filename,'before':len(previous),'after':len(rows),'contacts_imported':0}))
           PY
       - name: Confirm existing private-viewer public key
         run: |
@@ -152,6 +176,7 @@ jobs:
             publisher_cloud/*profile.py
             publisher_cloud/quantity_expansion.py
             publisher_cloud/deep_candidates.json
+            publisher_cloud/additional_candidates_20260909.json
             publisher_cloud/messaging_enrichment.py
             publisher_cloud/enrichment_candidates.json
             publisher_cloud/test_*.py
