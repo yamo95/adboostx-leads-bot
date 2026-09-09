@@ -16,8 +16,12 @@ const REVIEW_MAIL=/[A-Z0-9.!#$%&\x27*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-
 function reviewReason(c){
   const domain=String(c.domain||'').toLowerCase().replace(/^www\./,'');
   if([...REVIEW_SCOPE].some(h=>domain===h||domain.endsWith('.'+h)))return 'ADJACENT_SITE_SCOPE';
+  if(c.channel==='whatsapp' && domain==='sportzfytvs.net' && String(c.contact)==='+3167620901')return 'INCOMPLETE_PHONE';
   if(c.channel==='email'){
     const value=String(c.contact||'').toLowerCase();
+    if(/\.(?:example|invalid|test|localhost)$/.test(value))return 'PLACEHOLDER';
+    if(domain==='pastelink.net' && value.endsWith('@stopitnow.org.uk'))return 'UNRELATED_HELP_ORGANIZATION';
+    if(domain==='moddroid.com' && value==='contact@moddroid.com' && /app and game requests/i.test(c.evidence||''))return 'NON_OUTREACH_PURPOSE';
     if(REVIEW_PURPOSE.test(value.split('@')[0]))return 'NON_OUTREACH_PURPOSE';
     if(REVIEW_PLACEHOLDER.test(value)||/^[*\u2022]{3,}@/.test(value))return 'PLACEHOLDER';
     if(domain==='rutube.ru'&&/^(?:help|support)@/.test(value))return 'NON_OUTREACH_PURPOSE';
@@ -33,6 +37,8 @@ const priorRender=render;
 render=function(){
   priorRender();
   const explanations={
+    INCOMPLETE_PHONE:'המספר שפורסם נראה חסר; נשמר לבדיקה ולא נספר כמסלול וואטסאפ לפנייה.',
+    UNRELATED_HELP_ORGANIZATION:'ארגון סיוע חיצוני שמוזכר בעמוד, לא קונטקט של בעל האתר.',
     ADJACENT_SITE_SCOPE:'אתר משיק לפרופיל המבוקש; אינו נכלל ברשימת הפנייה המועדפת.',
     NON_OUTREACH_PURPOSE:'כתובת ייעודית למשפטי, פרטיות, תלונות, אבטחה או תפקיד אחר שאינו פנייה למונטיזציה.',
     PLACEHOLDER:'נראית ככתובת דוגמה; אינה קונטקט מומלץ לפנייה.',
