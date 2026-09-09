@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate page (deep checks targeted candidates and additional game/APK feeds)
+        description: Candidate page (enrich rechecks site-linked public contact descriptions)
         type: choice
-        options: [auto, deep, next, all, '0', '1', '2', '3']
-        default: deep
+        options: [auto, enrich, deep, next, all, '0', '1', '2', '3']
+        default: enrich
   schedule:
     - cron: '0 9,18 * * *'
       timezone: Asia/Jerusalem
@@ -28,7 +28,7 @@ jobs:
       run:
         working-directory: publisher_cloud
     env:
-      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'deep' }}
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'enrich' }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -36,10 +36,10 @@ jobs:
         with:
           ref: 462fb23fc114a26e318fa4379e2aa2b8d49a070b
           persist-credentials: false
-      - name: Load reviewed capacity adapters only
+      - name: Load reviewed discovery and contact enrichment adapters
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 1801073c4fb60b7cbd141c9aaf78d5761a136c29
+          ref: 7304fa343dd44a38d9aede5efa28f85d0f63d6d1
           path: quantity-config
           sparse-checkout: |
             publisher_cloud/quantity_expansion.py
@@ -53,9 +53,12 @@ jobs:
             publisher_cloud/deep_profile.py
             publisher_cloud/test_deep_profile.py
             publisher_cloud/deep_candidates.json
+            publisher_cloud/messaging_enrichment.py
+            publisher_cloud/test_messaging_enrichment.py
+            publisher_cloud/enrichment_candidates.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Install and verify unchanged extraction plus new discovery
+      - name: Install and test discovery and public-contact extraction
         run: |
           python3 -m pip install -r requirements.txt
           cp ../quantity-config/publisher_cloud/quantity_expansion.py .
@@ -69,6 +72,9 @@ jobs:
           cp ../quantity-config/publisher_cloud/deep_profile.py .
           cp ../quantity-config/publisher_cloud/test_deep_profile.py .
           cp ../quantity-config/publisher_cloud/deep_candidates.json .
+          cp ../quantity-config/publisher_cloud/messaging_enrichment.py .
+          cp ../quantity-config/publisher_cloud/test_messaging_enrichment.py .
+          cp ../quantity-config/publisher_cloud/enrichment_candidates.json .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -81,7 +87,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -110,8 +116,8 @@ jobs:
           assert hashlib.sha256(der).hexdigest() == 'b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b'
           Path('recipient.pem').write_bytes(raw)
           PY
-      - name: Discover and scan targeted public publisher sources without credentials
-        run: python3 deep_profile.py
+      - name: Scan websites and their public contact previews without credentials
+        run: python3 messaging_enrichment.py
       - name: Publish authenticated ciphertext only
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -129,7 +135,7 @@ jobs:
           assert len(base64.b64decode(envelope['wrapped_key'], validate=True)) == 384
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
-          cap = 500 if os.environ['SEED_BATCH'] in {'all','next','deep'} else 240
+          cap = 500 if os.environ['SEED_BATCH'] in {'all','next','deep','enrich'} else 240
           assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
           scan.publish(envelope, summary)
@@ -146,6 +152,8 @@ jobs:
             publisher_cloud/*profile.py
             publisher_cloud/quantity_expansion.py
             publisher_cloud/deep_candidates.json
+            publisher_cloud/messaging_enrichment.py
+            publisher_cloud/enrichment_candidates.json
             publisher_cloud/test_*.py
             publisher_cloud/requirements.txt
             publisher_cloud/leadengine/*.py
