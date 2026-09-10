@@ -12,6 +12,7 @@ on:
       - docs/style.css
       - tests/test_review_events.cjs
       - tests/test_search_round.cjs
+      - tests/test_search_recovery.cjs
       - tests/browser_smoke.py
   workflow_dispatch:
 
@@ -35,6 +36,8 @@ jobs:
         run: node tests/test_review_events.cjs
       - name: Verify search dispatch, strict messaging target and first-added dates
         run: node tests/test_search_round.cjs
+      - name: Verify explicit failed-page resume without duplicate dispatches
+        run: node tests/test_search_recovery.cjs
       - name: Install pinned browser test dependency
         run: |
           python3 -m pip install playwright==1.57.0
