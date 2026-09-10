@@ -9,17 +9,18 @@ function explicitCommunity(c){
 }
 const REVIEW_PURPOSE=/^(?:abuse|dmca|legal|privacy|copyright|takedown|security|noreply|no-reply|complaints?|appeals?|eudsa|dpo|gdpr|billing|press|media|bugs?|idea)(?:[._+-]|$)/i;
 const REVIEW_PLACEHOLDER=/^(?:you|yourname|youremail|your-email|user|username|test|example|name)@|@(?:example\.(?:com|org|net)|domain\.com|email\.com|test\.com)$/i;
-// These discovered sites are software tools, enterprise storage or institutional
-// collections, not the requested core publisher profile. Keep them review-only.
-const REVIEW_SCOPE=new Set(['rclone.org','raidrive.com','cyberduck.io','multcloud.com','clonr.co','dropbox.com','mega.io','pcloud.com','jumpshare.com','sweet.tv','rts.ch','jfc.org.il','cinematheque-bretagne.bzh','abandonware-magazines.org','tvgazeta.com.br','joj.sk','arcoiris.tv','retinalatina.org','rtvcplay.co','stvr.sk']);
+// Off-scope subscription sellers, software and institutional collections.
+const REVIEW_SCOPE=new Set(['stadiomaxapp.com','rclone.org','raidrive.com','cyberduck.io','multcloud.com','clonr.co','dropbox.com','mega.io','pcloud.com','jumpshare.com','sweet.tv','rts.ch','jfc.org.il','cinematheque-bretagne.bzh','abandonware-magazines.org','tvgazeta.com.br','joj.sk','arcoiris.tv','retinalatina.org','rtvcplay.co','stvr.sk']);
 const REVIEW_MAIL=/[A-Z0-9.!#$%&\x27*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,24}/gi;
 function reviewReason(c){
   const domain=String(c.domain||'').toLowerCase().replace(/^www\./,'');
   if([...REVIEW_SCOPE].some(h=>domain===h||domain.endsWith('.'+h)))return 'ADJACENT_SITE_SCOPE';
+  // Payment/agency and third-party channel-list contacts are not publisher owners.
+  if(c.channel==='telegram'&&String(c.contact||'').toLowerCase()==='@adcard_agency')return 'SERVICE_PROVIDER_CONTACT';
+  if(domain==='techcult.com'&&['telegram','whatsapp'].includes(c.channel))return 'THIRD_PARTY_LIST';
   if(c.channel==='whatsapp' && domain==='sportzfytvs.net' && String(c.contact)==='+3167620901')return 'INCOMPLETE_PHONE';
   if(c.channel==='email'){
     const value=String(c.contact||'').toLowerCase();
-    // Service-provider routes are retained for review, not publisher outreach.
     // Sources: https://guestpost.cc/contact-us/ and https://www.domain-evo.com/
     if(value.endsWith('@guestpost.cc'))return 'SEO_SERVICE_CONTACT';
     if(value.endsWith('@domain-evo.com'))return 'DOMAIN_SERVICE_CONTACT';
@@ -41,6 +42,8 @@ const priorRender=render;
 render=function(){
   priorRender();
   const explanations={
+    SERVICE_PROVIDER_CONTACT:'קונטקט של ספק שירות או תשלומים, לא אומת כאיש קשר למונטיזציה.',
+    THIRD_PARTY_LIST:'קישור לצד שלישי מתוך רשימת ערוצים. השיוך לבעל האתר לא הוכח.',
     SEO_SERVICE_CONTACT:'הכתובת משויכת לספק קידום אתרים; הסמכות לטפל במונטיזציה של האתר לא אומתה.',
     DOMAIN_SERVICE_CONTACT:'הכתובת משויכת לספק רישום דומיינים, ולא לאיש קשר עסקי מאומת של האתר.',
     INCOMPLETE_PHONE:'המספר שפורסם נראה חסר; נשמר לבדיקה ולא נספר כמסלול וואטסאפ לפנייה.',
@@ -57,9 +60,6 @@ render=function(){
     if(reason&&cards[i])cards[i].append(element('p',explanations[reason],'warning'));
   });
 };
-
-// app.js binds these controls before this review wrapper exists. Replace only
-// those original handlers so filter events retain review explanations too.
 for (const id of ['search','channel','quality','follow','fit','newOnly']) {
   const event = id === 'search' ? 'input' : 'change';
   $(id).removeEventListener(event, priorRender);
