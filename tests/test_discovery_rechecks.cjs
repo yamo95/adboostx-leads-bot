@@ -37,4 +37,16 @@ ctx.many=Array.from({length:100},(_,i)=>{const domain='pub'+i+'.example';return 
 check('rechecks bounded to 80 websites',()=>assert.equal(run('recheckDomains(many).length'),80));
 check('no contact values in recheck domain selection',()=>assert.ok(!run('JSON.stringify(recheckDomains(many))').includes('@')));
 check('complete seen history remains separate',()=>assert.ok(run('siteFingerprints.toString()').includes('payloads')));
+const email={...contact,channel:'email',contact:'support@publisher.com',contact_url:'mailto:support@publisher.com',profile_type:'email',quality:'PUBLISHED_GENERAL_ROUTE',role:'contact'};
+ctx.mail=payload({...base,extraction_revision:'messaging-intent-v3'},email);
+check('contact page may receive independent WhatsApp text recovery',()=>assert.equal(run('recheckDomains([mail]).length'),1));
+ctx.mailDone=payload({...base,extraction_revision:'messaging-intent-v3',whatsapp_context_revision:'whatsapp-label-v1'},email);
+check('WhatsApp text revision is never blindly repeated',()=>assert.equal(run('recheckDomains([mail,mailDone]).length'),0));
+ctx.legal=payload(base,{...email,contact:'dmca@publisher.com',contact_url:'mailto:dmca@publisher.com'});
+check('legal-only email not a WhatsApp recheck target',()=>assert.equal(run('recheckDomains([legal]).length'),0));
+ctx.payments={...ctx.direct.contacts[0],contact:'@adcard_agency',contact_url:'https://t.me/adcard_agency'};
+check('service payment contact not a publisher direct chat',()=>assert.equal(run('directMessaging(payments)'),false));
+check('paid subscription seller stays outside scope',()=>assert.equal(run('directMessaging({...payments,domain:"stadiomaxapp.com",contact:"@OtherDemo",contact_url:"https://t.me/OtherDemo"})'),false));
+check('third-party channel lists do not establish site ownership',()=>assert.equal(run('directMessaging({...payments,domain:"techcult.com",contact:"@OtherDemo",contact_url:"https://t.me/OtherDemo"})'),false));
+check('ordinary source-backed direct route remains eligible',()=>assert.equal(run('directMessaging(direct.contacts[0])'),true));
 console.log(checks+' discovery/recheck UI checks passed (synthetic fixtures; no network).');
