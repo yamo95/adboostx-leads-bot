@@ -8,11 +8,13 @@ on:
       - docs/app.js
       - docs/review.js
       - docs/round-search.js
+      - docs/fresh-search.js
       - docs/index.html
       - docs/style.css
       - tests/test_review_events.cjs
       - tests/test_search_round.cjs
       - tests/test_search_recovery.cjs
+      - tests/test_fresh_ui.cjs
       - tests/browser_smoke.py
   workflow_dispatch:
 
@@ -38,6 +40,8 @@ jobs:
         run: node tests/test_search_round.cjs
       - name: Verify explicit failed-page resume without duplicate dispatches
         run: node tests/test_search_recovery.cjs
+      - name: Verify unseen-site dispatch, direct-chat quality and agency exclusions
+        run: node tests/test_fresh_ui.cjs
       - name: Install pinned browser test dependency
         run: |
           python3 -m pip install playwright==1.57.0
