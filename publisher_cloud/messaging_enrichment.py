@@ -18,18 +18,19 @@ CALL_LIMIT = 8
 INQUIRY = re.compile(r'\bcontact|reach\s+us|\u043a\u043e\u043d\u0442\u0430\u043a\u0442|\u0441\u0432\u044f\u0437|hubungi|contatt|contacter',re.I)
 SUPPORT = re.compile(r'\u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a|bantuan|soporte|suporte',re.I)
 DECLINE = re.compile(r'no\s+ads|do\s+not\s+contact|not\s+accepting\s+ads|\u0431\u0435\u0437\s+\u0440\u0435\u043a\u043b\u0430\u043c',re.I)
+OWNER_LABEL = re.compile(r'(?:^|[|;\n])\s*(?:admin(?:istrator)?|owner|manager|contact|\u0430\u0434\u043c\u0438\u043d|\u0432\u043b\u0430\u0434\u0435\u043b\u0435\u0446|\u0644\u0644\u062a\u0648\u0627\u0635\u0644|\u0627\u0644\u062a\u0648\u0627\u0635\u0644|\u062a\u0628\u0644\u06cc\u063a\u0627\u062a|\u8054\u7cfb|\u5408\u4f5c)\s*[:=\-\u2014\u2013]|(?:admin|owner)\s+@', re.I)
 
 
 def extended_role(context,source):
     found=BASE_ROLE(context,source)
     if found!='unknown':return found
     if SUPPORT.search(context):return 'support'
-    if INQUIRY.search(context):return 'contact'
+    if INQUIRY.search(context) or OWNER_LABEL.search(context):return 'contact'
     return found
 
 
 def description_lines(desc,source):
-    """Keep the text and links of each visual line together, not the whole bio."""
+    """Keep text and links on their visual line, not the whole bio."""
     lines=[{'parts':[],'links':[]}]
     def newline():
         if lines[-1]['parts'] or lines[-1]['links']:lines.append({'parts':[],'links':[]})
@@ -55,7 +56,17 @@ def description_lines(desc,source):
 
 def from_description(desc,source,via):
     result=[]
-    for text,links in description_lines(desc,source):
+    lines=description_lines(desc,source)
+    combined=[];i=0
+    while i<len(lines):
+        text,links=lines[i]
+        # Only join a short label and a bare handle; never unrelated prose.
+        if i+1<len(lines) and len(text)<70 and not links and not scan.HANDLE.search(text) and extended_role(text,source) in {'business','contact','support'}:
+            following,hrefs=lines[i+1]
+            if len(following)<120 and (re.fullmatch(r'(?:@[A-Za-z][A-Za-z0-9_]{2,31}\s*[,;|]?\s*){1,4}',following) or re.fullmatch(r'https://t\.me/[A-Za-z][A-Za-z0-9_]{2,31}',following)):
+                text=text+' '+following;links=hrefs;i+=1
+        combined.append((text,links));i+=1
+    for text,links in combined:
         if DECLINE.search(text):continue
         purpose=extended_role(text,source)
         if purpose not in {'business','contact','support'}:continue
