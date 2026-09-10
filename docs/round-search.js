@@ -174,6 +174,16 @@ async function startSearch(resume=false){
  searchFlight=true;
  try{
   if(!await refresh())throw Error('INCOMPLETE_BASELINE');
+  if(resume&&searchState){
+   // Only an explicit Resume may retry a confirmed terminal failure. Dispatch
+   // the SAME round/page on current main, not GitHub's old-commit re-run API.
+   const state=searchState,version=generation;
+   const failed=await findSearchRun();
+   if(generation!==version||!privateKey||searchState!==state)throw Error('LOCKED');
+   if(failed?.status==='completed'&&['failure','cancelled','timed_out','startup_failure'].includes(failed.conclusion)){
+    state.retry_after_run_id=String(failed.id);state.pending=null;saveSearch();
+   }
+  }
   if(!resume){
    if(searchState&&!['complete','exhausted'].includes(searchState.status)&&!confirm('להתחיל סבב חדש במקום הסבב המושהה? סריקה שכבר נשלחה תוכל להסתיים, אך לא תיספר בסבב החדש.'))return;
    searchState={format:1,id:hex(crypto.getRandomValues(new Uint8Array(16))),started_at:new Date().toISOString(),
@@ -193,7 +203,11 @@ function scheduleSearch(epoch){
 async function findSearchRun(){
  const data=await githubSearch('/actions/workflows/'+SEARCH_WORKFLOW+'/runs?event=workflow_dispatch&branch=main&per_page=100');
  const title='B219 search '+searchState.id+' page '+searchState.page;
- return (data.workflow_runs||[]).find(r=>r.display_title===title&&r.head_branch==='main');
+ const after=Number(searchState.retry_after_run_id||0);
+ if(!Number.isSafeInteger(after)||after<0)throw Error('RETRY_RUN_ID');
+ return (data.workflow_runs||[])
+  .filter(r=>r.display_title===title&&r.head_branch==='main'&&Number.isSafeInteger(r.id)&&r.id>after)
+  .sort((a,b)=>b.id-a.id)[0];
 }
 async function advanceSearch(epoch){
  if(!searchRunning||epoch!==searchEpoch||searchFlight||!privateKey||!searchToken)return;
@@ -230,7 +244,7 @@ async function advanceSearch(epoch){
   const meta=report.search_round;
   if(meta.target!==SEARCH_TARGET||!Number.isInteger(meta.pool_size)||!/^[a-f0-9]{64}$/.test(meta.pool_hash))throw Error('ROUND_METADATA');
   if(searchState.pool_hash&&searchState.pool_hash!==meta.pool_hash)throw Error('POOL_CHANGED');
-  searchState.pool_hash=meta.pool_hash;searchState.pending=null;
+  searchState.pool_hash=meta.pool_hash;searchState.pending=null;delete searchState.retry_after_run_id;
   await refreshSearchCount();
   if(searchFound.length>=SEARCH_TARGET){searchState.status='complete';searchRunning=false;}
   else if(!meta.has_more||searchState.page+1>=SEARCH_MAX_PAGES){searchState.status='exhausted';searchRunning=false;}
