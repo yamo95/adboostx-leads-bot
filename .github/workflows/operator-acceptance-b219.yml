@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Fresh searches prioritize unseen websites; legacy rounds remain resumable
+        description: Fresh discovery with bounded versioned rechecks; legacy rounds remain resumable
         type: choice
         options: [auto, enrich, deep, next, all, search, fresh, '0', '1', '2', '3']
         default: enrich
@@ -25,7 +25,11 @@ on:
         type: string
         default: ''
       seen_hosts:
-        description: Compact site-history fingerprints; no contact values, token or private key
+        description: Compact site-history fingerprints; no contact values or keys
+        type: string
+        default: ''
+      recheck_hosts:
+        description: At most 80 previously scanned site fingerprints for this extraction revision
         type: string
         default: ''
   schedule:
@@ -86,15 +90,18 @@ jobs:
             publisher_cloud/test_search_round.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Load novelty-first discovery and bounded contact context
+      - name: Load rotating discovery and versioned extraction adapters
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 0cbfed052923d89e08efb6cf1c31c9437b4ec8d2
+          ref: 99759793e4dfc3312bd1156c45186ab3550acbe3
           path: fresh-config
           sparse-checkout: |
             publisher_cloud/fresh_discovery.py
+            publisher_cloud/discovery_sources.py
+            publisher_cloud/messaging_enrichment.py
             publisher_cloud/contact_context.py
             publisher_cloud/test_fresh_discovery.py
+            publisher_cloud/test_discovery_sources.py
             publisher_cloud/fresh_candidates.json
             publisher_cloud/fresh_seen_bootstrap.json
           sparse-checkout-cone-mode: false
@@ -102,28 +109,9 @@ jobs:
       - name: Install and test discovery and public-contact extraction
         run: |
           python3 -m pip install -r requirements.txt
-          cp ../quantity-config/publisher_cloud/quantity_expansion.py .
-          cp ../quantity-config/publisher_cloud/test_quantity_expansion.py .
-          cp ../quantity-config/publisher_cloud/scale_profile.py .
-          cp ../quantity-config/publisher_cloud/test_scale_profile.py .
-          cp ../quantity-config/publisher_cloud/growth_profile.py .
-          cp ../quantity-config/publisher_cloud/test_growth_profile.py .
-          cp ../quantity-config/publisher_cloud/continuation_profile.py .
-          cp ../quantity-config/publisher_cloud/test_continuation_profile.py .
-          cp ../quantity-config/publisher_cloud/deep_profile.py .
-          cp ../quantity-config/publisher_cloud/test_deep_profile.py .
-          cp ../quantity-config/publisher_cloud/deep_candidates.json .
-          cp ../quantity-config/publisher_cloud/messaging_enrichment.py .
-          cp ../quantity-config/publisher_cloud/test_messaging_enrichment.py .
-          cp ../quantity-config/publisher_cloud/enrichment_candidates.json .
-          cp ../quantity-config/publisher_cloud/additional_candidates_20260909.json .
-          cp ../search-config/publisher_cloud/search_round.py .
-          cp ../search-config/publisher_cloud/test_search_round.py .
-          cp ../fresh-config/publisher_cloud/fresh_discovery.py .
-          cp ../fresh-config/publisher_cloud/contact_context.py .
-          cp ../fresh-config/publisher_cloud/test_fresh_discovery.py .
-          cp ../fresh-config/publisher_cloud/fresh_candidates.json .
-          cp ../fresh-config/publisher_cloud/fresh_seen_bootstrap.json .
+          for file in ../quantity-config/publisher_cloud/* ../search-config/publisher_cloud/* ../fresh-config/publisher_cloud/*; do
+            cp "$file" .
+          done
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -136,7 +124,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery test_discovery_sources
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -168,9 +156,7 @@ jobs:
               path = Path(filename)
               previous = json.loads(path.read_text())
               rows = deep.target_rows(previous + additions)
-              existing_hosts = {deep.growth.scan.host(u) for u in previous}
-              merged_hosts = {deep.growth.scan.host(r['url']) for r in rows}
-              assert existing_hosts <= merged_hosts
+              assert {deep.growth.scan.host(u) for u in previous} <= {deep.growth.scan.host(r['url']) for r in rows}
               assert len(rows) <= 500
               path.write_text(json.dumps([r['url'] for r in rows], indent=2))
               print(json.dumps({'candidate_list':filename,'before':len(previous),'after':len(rows),'contacts_imported':0}))
@@ -193,6 +179,7 @@ jobs:
           SEARCH_PAGE: ${{ inputs.page || '0' }}
           SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
           SEARCH_SEEN_HOSTS: ${{ inputs.seen_hosts }}
+          SEARCH_RECHECK_HOSTS: ${{ inputs.recheck_hosts }}
         run: python3 fresh_discovery.py
       - name: Publish authenticated ciphertext and retain report history
         env:
@@ -238,6 +225,7 @@ jobs:
             publisher_cloud/enrichment_candidates.json
             publisher_cloud/search_round.py
             publisher_cloud/fresh_discovery.py
+            publisher_cloud/discovery_sources.py
             publisher_cloud/contact_context.py
             publisher_cloud/fresh_candidates.json
             publisher_cloud/fresh_seen_bootstrap.json
