@@ -22,6 +22,7 @@ INTENTS = ['telegram contact', 'whatsapp contact', 'telegram support', 'telegram
 STOP = {'challenge', 'http_403', 'http_429', 'robots_denied_or_unavailable'}
 SEARCH_ONLY = {'bing.com', 'duckduckgo.com', 'google.com', 'search.yahoo.com', 'youtube.com', 'facebook.com', 'instagram.com', 't.me', 'telegram.me', 'nicegram.app', 'telemetr.io', 'telegramchannels.me', 'telegramcatalog.com', 'telegram.im', 'appbrain.com', 'download.cnet.com'}
 CHALLENGE = re.compile(r'anomaly-modal|challenge-form|bots use DuckDuckGo|select all (?:squares|images)|verify (?:that )?you are human|captcha', re.I)
+OFF_SCOPE_HOST = re.compile(r'casino|bet|1win|rummy|poker|slot|lottery|teenpatti|hitclub|go88|sunwin|bong88|918kiss|pinup|porn|xxx|sex|incest|hentai|chatur|nsfw|flixbus|flixster|studyflix|napkin|sapkowski|slaapkamer|fleamapket|packaging|carepackage|\.(?:gov|mil)(?:\.|$)|\.mod\.uk$', re.I)
 CONTACT_PATH = re.compile(r'contact|support|advertis|partner|reklam|kontak|contato|about', re.I)
 
 
@@ -42,6 +43,7 @@ def clean_candidate(raw):
         value = candidate(raw)
         if not value: return None
         h = scan.host(value)
+        if OFF_SCOPE_HOST.search(h): return None
         if any(h == x or h.endswith('.' + x) for x in SEARCH_ONLY): return None
         if re.search(r'(?:best|top)[^/]*telegram[^/]*(?:channel|group)', urlsplit(value).path, re.I): return None
         if h.endswith('uptodown.com') and h.startswith('telegram.'): return None
