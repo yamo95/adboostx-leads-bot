@@ -1,0 +1,72 @@
+{
+  "format": 2,
+  "id": "bed5ef9adfb3eec7aea7163814c082a5",
+  "revision": "fresh-discovery-v2-20260910",
+  "urls": [],
+  "pool_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "known_sites_skipped": 1326,
+  "history_fingerprints": 1430,
+  "discovery_checks": [
+    {
+      "query": "\"mod apk\" \"contact\" \"whatsapp\"",
+      "state": "ok",
+      "candidates": 2
+    },
+    {
+      "query": "\"apk\" \"contact us\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"movie streaming\" \"advertising\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"sports streaming\" \"contact\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"url shortener\" \"telegram support\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"shortlink\" \"contact\" \"whatsapp\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"video hosting\" \"contact\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"game mods\" \"contact\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"apk\" \"contato\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"filmes\" \"contato\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"streaming\" \"contacto\" \"telegram\"",
+      "state": "ok",
+      "candidates": 0
+    },
+    {
+      "query": "\"mod apk\" \"hubungi\" \"whatsapp\"",
+      "state": "ok",
+      "candidates": 0
+    }
+  ],
+  "created_at": "2026-09-10T11:06:59+00:00"
+}
