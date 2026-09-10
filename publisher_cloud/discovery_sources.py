@@ -1,10 +1,8 @@
-"""Bounded, rotating publisher discovery. Search results are URLs, not leads.
-
-No proxy rotation, challenge bypass, cookies, API keys, or publisher credentials.
-Each provider independently honours robots.txt. Provider failures are observable.
-"""
+"""Bounded rotating discovery. Sources supply URLs, never contact evidence."""
 from __future__ import annotations
 import hashlib
+import json
+from pathlib import Path
 import os
 import re
 from urllib.parse import urlsplit, urljoin, parse_qs, quote
@@ -22,13 +20,12 @@ FAMILIES = {
 }
 INTENTS = ['telegram contact', 'whatsapp contact', 'telegram support', 'telegram advertising']
 STOP = {'challenge', 'http_403', 'http_429', 'robots_denied_or_unavailable'}
-SEARCH_ONLY = {'bing.com', 'duckduckgo.com', 'google.com', 'search.yahoo.com', 'youtube.com', 'facebook.com', 'instagram.com', 't.me', 'telegram.me', 'nicegram.app', 'telemetr.io', 'telegramchannels.me', 'telegramcatalog.com'}
+SEARCH_ONLY = {'bing.com', 'duckduckgo.com', 'google.com', 'search.yahoo.com', 'youtube.com', 'facebook.com', 'instagram.com', 't.me', 'telegram.me', 'nicegram.app', 'telemetr.io', 'telegramchannels.me', 'telegramcatalog.com', 'telegram.im', 'appbrain.com', 'download.cnet.com'}
 CHALLENGE = re.compile(r'anomaly-modal|challenge-form|bots use DuckDuckGo|select all (?:squares|images)|verify (?:that )?you are human|captcha', re.I)
 CONTACT_PATH = re.compile(r'contact|support|advertis|partner|reklam|kontak|contato|about', re.I)
 
 
 def query_plan(slot=None):
-    """Twelve queries, two per niche; consecutive runs change all topic variants."""
     slot = int(os.environ.get('GITHUB_RUN_NUMBER', '0')) if slot is None else int(slot)
     out = []
     for family, topics in FAMILIES.items():
@@ -46,6 +43,8 @@ def clean_candidate(raw):
         if not value: return None
         h = scan.host(value)
         if any(h == x or h.endswith('.' + x) for x in SEARCH_ONLY): return None
+        if re.search(r'(?:best|top)[^/]*telegram[^/]*(?:channel|group)', urlsplit(value).path, re.I): return None
+        if h.endswith('uptodown.com') and h.startswith('telegram.'): return None
         if re.search(r'(?:^|[./_-])(?:iptv|casino|betting)(?:[./_-]|$)', h, re.I): return None
         return value
     except (ValueError, TypeError): return None
@@ -56,10 +55,8 @@ def parse_search(html, provider):
     urls = []
     if provider == 'bing-rss':
         if re.search(r'<!DOCTYPE|<!ENTITY', html, re.I): return [], 'invalid_xml'
-        try:
-            root = ET.fromstring(html)
-        except ET.ParseError:
-            return [], 'unexpected_markup'
+        try: root = ET.fromstring(html)
+        except ET.ParseError: return [], 'unexpected_markup'
         if root.tag not in {'rss', 'feed'}: return [], 'unexpected_markup'
         urls = [node.text or '' for node in root.findall('.//item/link')]
         state = 'results' if urls else 'no_results'
@@ -83,7 +80,6 @@ def parse_search(html, provider):
 
 
 async def fetch_rss(fetcher, url):
-    """RSS-only transport on a fixed origin, using the same safe resolver/pacing."""
     if urlsplit(url).hostname != 'www.bing.com' or urlsplit(url).path != '/search':
         raise ValueError('RSS_ENDPOINT')
     result = {'state': 'error', 'status': 0, 'html': ''}
@@ -124,6 +120,17 @@ async def discover():
                 urls.extend(found)
                 if state in STOP: blocked.add(provider)
             if len(blocked) == 2: break
+    cache_path=Path(__file__).with_name('catalog-candidates.json')
+    if cache_path.exists():
+        cached=json.loads(cache_path.read_text())
+        raw=cached.get('urls',[])
+        if not isinstance(raw,list) or len(raw)>2200:raise ValueError('CATALOG_CACHE_SIZE')
+        candidates=[u for u in raw if isinstance(u,str) and clean_candidate(u)==u]
+        checks.append({'provider':'majestic-million','source':cached.get('source'),
+            'attribution':cached.get('attribution'),'license':cached.get('license'),
+            'state':cached.get('state','unknown'),'candidates':len(candidates),
+            'downloaded_at':cached.get('downloaded_at'),'daily_cache':True})
+        urls.extend(candidates)
     preferred = sorted(dict.fromkeys(urls), key=lambda u: (not bool(CONTACT_PATH.search(urlsplit(u).path)), u))
     return preferred, checks
 
