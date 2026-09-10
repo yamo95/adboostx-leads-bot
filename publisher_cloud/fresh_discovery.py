@@ -10,9 +10,8 @@ import hashlib
 import json
 import os
 import re
-from collections import Counter
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qs, unquote, quote
+from urllib.parse import urlsplit, parse_qs
 from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 import scan
@@ -20,24 +19,13 @@ import deep_profile as deep
 import messaging_enrichment as messaging
 import search_round as legacy
 import contact_context
+import discovery_sources
 
 ROOT = Path(__file__).parent
 BASE = 'https://raw.githubusercontent.com/yamo95/adboostx-leads-bot/main/'
-REVISION = 'fresh-discovery-v2-20260910'
-QUERIES = [
-    '"mod apk" "contact" "whatsapp"',
-    '"apk" "contact us" "telegram"',
-    '"movie streaming" "advertising" "telegram"',
-    '"sports streaming" "contact" "telegram"',
-    '"url shortener" "telegram support"',
-    '"shortlink" "contact" "whatsapp"',
-    '"video hosting" "contact" "telegram"',
-    '"game mods" "contact" "telegram"',
-    '"apk" "contato" "telegram"',
-    '"filmes" "contato" "telegram"',
-    '"streaming" "contacto" "telegram"',
-    '"mod apk" "hubungi" "whatsapp"',
-]
+REVISION = 'fresh-discovery-v3-20260910'
+EXTRACTION_REVISION = 'messaging-intent-v3'
+RECHECK_LIMIT = 80
 NOT_PUBLISHER = {'duckduckgo.com','bing.com','google.com','facebook.com','instagram.com',
  'youtube.com','linkedin.com','x.com','twitter.com','pinterest.com','telegram.org',
  'core.telegram.org','t.me','telegra.ph','whatsapp.com','wa.me','linktr.ee',
@@ -49,9 +37,7 @@ def host_key(domain):
 
 
 class BootstrapHistory:
-    """Conservative acceptance-only Bloom filter; live UI sends exact hashes.
-    False positives can only skip a candidate, never call an old site new.
-    """
+    """Acceptance-only conservative history; live browser sends exact hashes."""
     def __init__(self, obj):
         self.bits = base64.b64decode(obj['bits'], validate=True)
         if len(self.bits) != 4096 or obj['format'] != 1: raise ValueError('BOOTSTRAP')
@@ -80,7 +66,7 @@ def candidate(value):
 
 
 def results(html, source):
-    """Search snippets are discovery only; never treated as contact evidence."""
+    """Legacy parser kept for compatibility; snippets are never contact evidence."""
     soup=BeautifulSoup(html,'html.parser'); rows=[]; seen=set()
     for a in soup.select('a.result__a[href]'):
         u=a['href']; p=urlsplit(u)
@@ -94,36 +80,32 @@ def results(html, source):
 
 
 async def discover():
-    urls=[]; checks=[]
-    # Original safe resolver, robots rules, maximum sizes and pace are retained.
-    async with scan.Fetcher() as fetcher:
-        for q in QUERIES:
-            u='https://html.duckduckgo.com/html/?q='+quote(q+' -iptv -casino -site:t.me -site:facebook.com -site:youtube.com')
-            try:
-                reply=await fetcher.get(u)
-                found=results(reply.get('html',''),u) if reply.get('state')=='ok' else []
-                urls.extend(found)
-                checks.append({'query':q,'state':reply.get('state'),'candidates':len(found)})
-                if reply.get('state') in {'http_403','http_429','robots_denied_or_unavailable'}: break
-            except Exception as e:
-                checks.append({'query':q,'state':type(e).__name__,'candidates':0})
-    return urls,checks
+    return await discovery_sources.discover()
 
 
-def build_plan(rid, seeds, seen, preferred=(), diagnostics=()):
-    candidates=[]; hosts=set(); skipped=set()
+def build_plan(rid, seeds, seen, preferred=(), diagnostics=(), recheck=()):
+    candidates=[]; revisits=[]; hosts=set(); skipped=set()
+    recheck=set(recheck)
+    if len(recheck)>RECHECK_LIMIT: raise ValueError('RECHECK_LIMIT')
     for raw in list(preferred)+list(seeds):
         u=candidate(raw)
         if not u: continue
         h=scan.host(u)
-        if host_key(h) in seen:
+        known=host_key(h) in seen
+        if known and host_key(h) not in recheck:
             skipped.add(h); continue
         if h not in hosts:
-            hosts.add(h);candidates.append(u)
-    candidates=candidates[:legacy.PAGE_SIZE*legacy.MAX_PAGES]
-    return {'format':2,'id':rid,'revision':REVISION,'urls':candidates,
-      'pool_hash':hashlib.sha256('\n'.join(candidates).encode()).hexdigest(),
+            hosts.add(h)
+            (revisits if known else candidates).append(u)
+    limit=legacy.PAGE_SIZE*legacy.MAX_PAGES
+    candidates=candidates[:limit-RECHECK_LIMIT]
+    unseen_count=len(candidates)
+    urls=candidates[:40]+revisits[:RECHECK_LIMIT]+candidates[40:]
+    return {'format':2,'id':rid,'revision':REVISION,'urls':urls,
+      'pool_hash':hashlib.sha256('\n'.join(urls).encode()).hexdigest(),
       'known_sites_skipped':len(skipped),'history_fingerprints':len(seen),
+      'recheck_sites':len(revisits[:RECHECK_LIMIT]),'new_candidate_sites':unseen_count,
+      'discovery_health':discovery_sources.health(diagnostics),
       'discovery_checks':list(diagnostics),'created_at':scan.stamp()}
 
 
@@ -157,7 +139,11 @@ def metadata(plan,page):
       'pool_hash':plan['pool_hash'],'target':30,'has_more':end<len(plan['urls']),
       'max_pages':legacy.MAX_PAGES,'completion':'PAGE_ONLY','novelty_counting':'private_browser',
       'known_sites_skipped':plan['known_sites_skipped'],
-      'history_fingerprints':plan['history_fingerprints'],'discovery_checks':plan['discovery_checks']}
+      'history_fingerprints':plan['history_fingerprints'],'discovery_checks':plan['discovery_checks'],
+      'recheck_sites':plan.get('recheck_sites',0),
+      'new_candidate_sites':plan.get('new_candidate_sites',len(plan['urls'])),
+      'extraction_revision':EXTRACTION_REVISION,
+      'discovery_health':plan.get('discovery_health',{})}
 
 
 def empty_report(meta):
@@ -165,7 +151,7 @@ def empty_report(meta):
       'seed_pool':0,'seeds_scanned':0,'sites_checked':0,'pages_opened':0,
       'contact_evidence_records':0,'published_messaging_routes':0,'relevant_sites':0,
       'access_states':{},'status':'FRESH_CANDIDATES_EXHAUSTED','mode':'keyless_bounded_snapshot',
-      'notice':'No unseen candidates available; target not reached. No outreach was sent.'}
+      'notice':'No candidates scanned; target not reached. Inspect discovery_health to distinguish provider failures. No outreach was sent.'}
     payload={'summary':summary,'sites':[],'contacts':[],'search_round':meta}
     scan.main.__globals__['_save_operator_copy'](payload)
     out=ROOT/'sealed';out.mkdir(exist_ok=True)
@@ -177,14 +163,18 @@ def empty_report(meta):
 def main():
     mode=os.environ.get('SEED_BATCH','auto')
     if mode!='fresh': return legacy.main()
-    # The acceptance push is bounded and cannot claim a private browser quota.
     if os.environ.get('GITHUB_EVENT_NAME')=='push':
         rid=hashlib.sha256(('acceptance|'+os.environ['GITHUB_RUN_ID']).encode()).hexdigest()[:32]
-        page=0;expected='';seen=BootstrapHistory(json.loads((ROOT/'fresh_seen_bootstrap.json').read_text()))
+        page=0;expected=''
+        bootstrap=json.loads((ROOT/'fresh_seen_bootstrap.json').read_text())
+        seen=BootstrapHistory(bootstrap)
+        recheck=set(bootstrap.get('recheck_hosts',[]))
     else:
         rid,page,expected=legacy.request(os.environ)
         if os.environ.get('GITHUB_EVENT_NAME')!='workflow_dispatch': raise ValueError('EXPLICIT_REQUEST_REQUIRED')
         seen=decode_seen(os.environ.get('SEARCH_SEEN_HOSTS',''))
+        recheck=decode_seen(os.environ.get('SEARCH_RECHECK_HOSTS',''))
+        if len(recheck)>RECHECK_LIMIT: raise ValueError('RECHECK_LIMIT')
         if page==0 and not seen: raise ValueError('COMPLETE_SITE_HISTORY_REQUIRED')
     plan=load_plan(rid,expected) if page else None
     preferred=[];checks=[]
@@ -197,15 +187,14 @@ def main():
     old_order=deep.growth.ordered_candidates;old_parse=scan.parse;old_mode=os.environ.get('SEED_BATCH')
     plan_holder={}; meta_holder={}
     def order(rows):
-        # Insert freshly discovered URLs BEFORE the inherited 1500-candidate cap.
         extra=[{'url':u,'kind':'fresh-discovery','source':u,
            'basis':'Public candidate URL only; contact extracted independently from website'} for u in preferred]
         full=old_order(extra+rows)
-        chosen_plan=plan or build_plan(rid,[r['url'] for r in full],seen,preferred,checks)
+        chosen_plan=plan or build_plan(rid,[r['url'] for r in full],seen,preferred,checks,recheck)
         plan_holder.update(chosen_plan)
         lookup={scan.host(r['url']):r for r in full}
         return [lookup.get(scan.host(u),{'url':u,'kind':'frozen-fresh-plan','source':u,
-            'basis':'Unseen candidate at round start, not verified publisher'}) | {'url':u} for u in chosen_plan['urls']]
+            'basis':'Discovery or extraction recheck candidate, not verified publisher'}) | {'url':u} for u in chosen_plan['urls']]
     def select(seeds,batch='auto',now=None,deep_urls=()):
         meta_holder.update(metadata(plan_holder,page))
         start=page*legacy.PAGE_SIZE;chosen=plan_holder['urls'][start:start+legacy.PAGE_SIZE]
@@ -213,6 +202,8 @@ def main():
         return chosen
     def copy(payload):
         payload['search_round']=dict(meta_holder)
+        for site in payload.get('sites',[]):
+            site['extraction_revision']=EXTRACTION_REVISION
         payload['search_round']['page_messaging_records']=sum(c.get('channel') in {'telegram','whatsapp'} for c in payload['contacts'])
         return old_copy(payload)
     try:
@@ -245,7 +236,7 @@ def publish(envelope,summary):
             prior=json.loads(base64.b64decode(existing['content']))
             if prior['pool_hash']!=plan['pool_hash']: raise ValueError('IMMUTABLE_PLAN_CONFLICT')
         else:
-            scan.gh('PUT','contents/'+path,{'branch':'main','message':'Freeze unseen candidate plan; no contact data',
+            scan.gh('PUT','contents/'+path,{'branch':'main','message':'Freeze candidate plan; no contact data',
               'content':base64.b64encode(json.dumps(plan,indent=2).encode()).decode()})
     legacy.publish(envelope,summary)
 
