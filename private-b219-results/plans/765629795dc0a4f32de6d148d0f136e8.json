@@ -1,0 +1,69 @@
+{
+  "format": 2,
+  "id": "765629795dc0a4f32de6d148d0f136e8",
+  "revision": "fresh-discovery-v3-20260910",
+  "urls": [
+    "https://honista.app/contact/",
+    "https://honista-android-advice-app.en.softonic.com/android",
+    "https://honista-ikm.en.softonic.com/android",
+    "https://honista.en.softonic.com/android",
+    "https://honista.en.uptodown.com/android",
+    "https://www.malavida.com/en/soft/honista/android/"
+  ],
+  "pool_hash": "e27f98d1a37cf0dc2d4d1464699fed4fc21a7c4370f668b58ce73d1139ffcf14",
+  "known_sites_skipped": 1711,
+  "history_fingerprints": 2118,
+  "recheck_sites": 0,
+  "new_candidate_sites": 6,
+  "discovery_health": {
+    "requests": 5,
+    "productive": 3,
+    "failed": 2,
+    "state": "degraded"
+  },
+  "discovery_checks": [
+    {
+      "provider": "duckduckgo-html",
+      "family": "apk",
+      "query": "android apk download telegram support -iptv -casino -site:youtube.com -site:facebook.com",
+      "state": "results",
+      "http_status": 200,
+      "candidates": 3
+    },
+    {
+      "provider": "bing-rss",
+      "family": "apk",
+      "query": "android apk download telegram support -iptv -casino -site:youtube.com -site:facebook.com",
+      "state": "robots_denied_or_unavailable",
+      "http_status": 0,
+      "candidates": 0
+    },
+    {
+      "provider": "duckduckgo-html",
+      "family": "apk",
+      "query": "honista apk whatsapp contact -iptv -casino -site:youtube.com -site:facebook.com",
+      "state": "results",
+      "http_status": 200,
+      "candidates": 8
+    },
+    {
+      "provider": "duckduckgo-html",
+      "family": "movies",
+      "query": "film streaming telegram support -iptv -casino -site:youtube.com -site:facebook.com",
+      "state": "challenge",
+      "http_status": 202,
+      "candidates": 0
+    },
+    {
+      "provider": "majestic-million",
+      "source": "https://downloads.majestic.com/majestic_million.csv",
+      "attribution": "Domain candidates derived from Majestic Million by Majestic 12, CC BY 3.0. Ranking is not publisher-fit or contact verification.",
+      "license": "https://creativecommons.org/licenses/by/3.0/",
+      "state": "results",
+      "candidates": 609,
+      "downloaded_at": "2026-09-10T11:53:04.041317+00:00",
+      "daily_cache": true
+    }
+  ],
+  "created_at": "2026-09-10T13:40:01+00:00"
+}
