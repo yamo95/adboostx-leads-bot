@@ -16,7 +16,7 @@ import contact_context
 import quantity_expansion as quantity
 import fresh_discovery
 
-REVISION = 'intent-depth-v1-20260910'
+REVISION = 'intent-depth-v2-20260910'
 MAX_SITES, MAX_PAGES, MAX_PREVIEWS, MAX_DOCUMENTS = 120, 18, 20, 4
 PAGE_SECONDS, PREVIEW_SECONDS = 165, 75
 INTENT = re.compile(r'contact|advertis|partnership|business|sponsor|media.?kit|about.?us|reklam|kontakt|hubungi|kerjasama|lien.?he|\bads\b', re.I)
@@ -24,6 +24,10 @@ DENY_PATH = re.compile(r'login|sign.?up|register|logout|download|\bdl\b|checkout
 BASE_ROLE = messaging.extended_role
 
 def intent_role(text, source):
+    # A Telegram/article URL containing 'contact' is not a role label.
+    # Only the visible line may attribute an external profile's purpose.
+    if urlsplit(source).hostname in set(scan.TG_HOSTS)|{'telegra.ph'}:
+        source=scan.origin(source)+'/'
     role=BASE_ROLE(text,source)
     if role in {'legal','seo_service'}:return role
     if re.search(r'(?<!\w)(?:ads|sponsorship|collaboration)\s*(?:contact|inquir\w*)?\s*[:=-]',text,re.I):return 'business'
@@ -47,7 +51,7 @@ def linked_documents(html, source):
         if a.find_parent(class_=re.compile('comment|user-post|review-body',re.I)):continue
         context=contact_context.local_context(a)
         url=document_url(urljoin(source,a['href']))
-        if url and re.search(r'contact|advertis|media.?kit|inquir|kontakt|hubungi|reklam',context,re.I) and not contact_context.EXCLUDED_CONTEXT.search(context):result.append(url)
+        if url and re.search(r'contact|advertis|media.?kit|inquir|kontakt|hubungi|reklam|\bads?\s*[:=-]',context,re.I) and not contact_context.EXCLUDED_CONTEXT.search(context):result.append(url)
     return list(dict.fromkeys(result))[:MAX_DOCUMENTS]
 
 async def deeper_hops(contacts, fetcher, documents):
