@@ -93,7 +93,7 @@ jobs:
       - name: Load rotating discovery and versioned extraction adapters
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 3792d429ab535fcd41edf6aee143c0a789adf99b
+          ref: 1f64786df248baef246911b42bb2bca150bb5101
           path: fresh-config
           sparse-checkout: |
             publisher_cloud/fresh_discovery.py
@@ -104,6 +104,7 @@ jobs:
             publisher_cloud/test_fresh_discovery.py
             publisher_cloud/test_discovery_sources.py
             publisher_cloud/test_catalog_candidates.py
+            publisher_cloud/test_catalog_filter.py
             publisher_cloud/test_whatsapp_context.py
             publisher_cloud/fresh_candidates.json
             publisher_cloud/fresh_seen_bootstrap.json
@@ -127,7 +128,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery test_discovery_sources test_whatsapp_context test_catalog_candidates
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery test_discovery_sources test_whatsapp_context test_catalog_candidates test_catalog_filter
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
