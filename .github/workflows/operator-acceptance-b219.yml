@@ -32,6 +32,11 @@ on:
         description: At most 80 previously scanned site fingerprints for this extraction revision
         type: string
         default: ''
+      depth:
+        description: Optional focused contact-page and explicitly linked public-document inspection
+        type: choice
+        options: [standard, focused]
+        default: standard
   schedule:
     - cron: '0 9,18 * * *'
       timezone: Asia/Jerusalem
@@ -50,6 +55,7 @@ jobs:
         working-directory: publisher_cloud
     env:
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'fresh' }}
+      SEARCH_DEPTH: ${{ inputs.depth || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[b219-deep]') && 'focused' || 'standard') }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -110,10 +116,21 @@ jobs:
             publisher_cloud/fresh_seen_bootstrap.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - name: Load tested optional deeper contact inspection
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 51ce50d8438d843c3922e00f3d4c643dc97be383
+          path: depth-config
+          sparse-checkout: |
+            publisher_cloud/intent_depth.py
+            publisher_cloud/intent_targets.json
+            publisher_cloud/test_intent_depth.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Install and test discovery and public-contact extraction
         run: |
           python3 -m pip install -r requirements.txt
-          for file in ../quantity-config/publisher_cloud/* ../search-config/publisher_cloud/* ../fresh-config/publisher_cloud/*; do
+          for file in ../quantity-config/publisher_cloud/* ../search-config/publisher_cloud/* ../fresh-config/publisher_cloud/* ../depth-config/publisher_cloud/*; do
             cp "$file" .
           done
           python3 - <<'PY'
@@ -128,7 +145,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery test_discovery_sources test_whatsapp_context test_catalog_candidates test_catalog_filter
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery test_discovery_sources test_whatsapp_context test_catalog_candidates test_catalog_filter test_intent_depth
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -166,7 +183,7 @@ jobs:
               print(json.dumps({'candidate_list':filename,'before':len(previous),'after':len(rows),'contacts_imported':0}))
           PY
       - name: Prepare attributed daily domain candidates with a persisted request guard
-        if: env.SEED_BATCH == 'fresh'
+        if: env.SEED_BATCH == 'fresh' && env.SEARCH_DEPTH != 'focused'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 catalog_candidates.py
@@ -189,7 +206,7 @@ jobs:
           SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
           SEARCH_SEEN_HOSTS: ${{ inputs.seen_hosts }}
           SEARCH_RECHECK_HOSTS: ${{ inputs.recheck_hosts }}
-        run: python3 fresh_discovery.py
+        run: python3 intent_depth.py
       - name: Publish authenticated ciphertext and retain report history
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -198,7 +215,7 @@ jobs:
           import base64, json, os
           from pathlib import Path
           import scan
-          import fresh_discovery
+          import intent_depth
           envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
@@ -215,7 +232,7 @@ jobs:
           else:
               assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
-          fresh_discovery.publish(envelope, summary)
+          intent_depth.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data and public testable adapters
         if: ${{ always() && github.event_name != 'schedule' }}
@@ -239,6 +256,8 @@ jobs:
             publisher_cloud/contact_context.py
             publisher_cloud/fresh_candidates.json
             publisher_cloud/fresh_seen_bootstrap.json
+            publisher_cloud/intent_depth.py
+            publisher_cloud/intent_targets.json
             publisher_cloud/test_*.py
             publisher_cloud/requirements.txt
             publisher_cloud/leadengine/*.py
