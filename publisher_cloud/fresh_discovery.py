@@ -1,7 +1,5 @@
 """Novelty-first adapter for B219; same crawler, encryption and publication.
-
-Only public candidate URLs go into a frozen plan. The browser supplies compact
-host fingerprints and still counts new, source-backed messaging contacts.
+Only public candidate URLs go into a frozen plan. Browser counts new contacts.
 """
 from __future__ import annotations
 import asyncio
@@ -25,6 +23,7 @@ ROOT = Path(__file__).parent
 BASE = 'https://raw.githubusercontent.com/yamo95/adboostx-leads-bot/main/'
 REVISION = 'fresh-discovery-v3-20260910'
 EXTRACTION_REVISION = 'messaging-intent-v3'
+WHATSAPP_CONTEXT_REVISION = 'whatsapp-label-v1'
 RECHECK_LIMIT = 80
 NOT_PUBLISHER = {'duckduckgo.com','bing.com','google.com','facebook.com','instagram.com',
  'youtube.com','linkedin.com','x.com','twitter.com','pinterest.com','telegram.org',
@@ -37,7 +36,6 @@ def host_key(domain):
 
 
 class BootstrapHistory:
-    """Acceptance-only conservative history; live browser sends exact hashes."""
     def __init__(self, obj):
         self.bits = base64.b64decode(obj['bits'], validate=True)
         if len(self.bits) != 4096 or obj['format'] != 1: raise ValueError('BOOTSTRAP')
@@ -66,7 +64,6 @@ def candidate(value):
 
 
 def results(html, source):
-    """Legacy parser kept for compatibility; snippets are never contact evidence."""
     soup=BeautifulSoup(html,'html.parser'); rows=[]; seen=set()
     for a in soup.select('a.result__a[href]'):
         u=a['href']; p=urlsplit(u)
@@ -143,6 +140,7 @@ def metadata(plan,page):
       'recheck_sites':plan.get('recheck_sites',0),
       'new_candidate_sites':plan.get('new_candidate_sites',len(plan['urls'])),
       'extraction_revision':EXTRACTION_REVISION,
+      'whatsapp_context_revision':WHATSAPP_CONTEXT_REVISION,
       'discovery_health':plan.get('discovery_health',{})}
 
 
@@ -204,6 +202,7 @@ def main():
         payload['search_round']=dict(meta_holder)
         for site in payload.get('sites',[]):
             site['extraction_revision']=EXTRACTION_REVISION
+            site['whatsapp_context_revision']=WHATSAPP_CONTEXT_REVISION
         payload['search_round']['page_messaging_records']=sum(c.get('channel') in {'telegram','whatsapp'} for c in payload['contacts'])
         return old_copy(payload)
     try:
