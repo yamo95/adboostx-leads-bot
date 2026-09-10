@@ -1,5 +1,5 @@
 name: Publisher Contacts B219 - Scheduled Scans
-run-name: ${{ inputs.batch == 'search' && format('B219 search {0} page {1}', inputs.round_id, inputs.page) || github.workflow }}
+run-name: ${{ (inputs.batch == 'search' || inputs.batch == 'fresh') && format('B219 search {0} page {1}', inputs.round_id, inputs.page) || github.workflow }}
 on:
   push:
     branches: [main]
@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: Candidate page (search is controlled by the existing results page)
+        description: Fresh searches prioritize unseen websites; legacy rounds remain resumable
         type: choice
-        options: [auto, enrich, deep, next, all, search, '0', '1', '2', '3']
+        options: [auto, enrich, deep, next, all, search, fresh, '0', '1', '2', '3']
         default: enrich
       round_id:
         description: Search round ID supplied by the results page
@@ -22,6 +22,10 @@ on:
         default: '0'
       pool_hash:
         description: Candidate pool fingerprint from the preceding encrypted report
+        type: string
+        default: ''
+      seen_hosts:
+        description: Compact site-history fingerprints; no contact values, token or private key
         type: string
         default: ''
   schedule:
@@ -41,7 +45,7 @@ jobs:
       run:
         working-directory: publisher_cloud
     env:
-      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'enrich' }}
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'fresh' }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -82,6 +86,19 @@ jobs:
             publisher_cloud/test_search_round.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - name: Load novelty-first discovery and bounded contact context
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0cbfed052923d89e08efb6cf1c31c9437b4ec8d2
+          path: fresh-config
+          sparse-checkout: |
+            publisher_cloud/fresh_discovery.py
+            publisher_cloud/contact_context.py
+            publisher_cloud/test_fresh_discovery.py
+            publisher_cloud/fresh_candidates.json
+            publisher_cloud/fresh_seen_bootstrap.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Install and test discovery and public-contact extraction
         run: |
           python3 -m pip install -r requirements.txt
@@ -102,6 +119,11 @@ jobs:
           cp ../quantity-config/publisher_cloud/additional_candidates_20260909.json .
           cp ../search-config/publisher_cloud/search_round.py .
           cp ../search-config/publisher_cloud/test_search_round.py .
+          cp ../fresh-config/publisher_cloud/fresh_discovery.py .
+          cp ../fresh-config/publisher_cloud/contact_context.py .
+          cp ../fresh-config/publisher_cloud/test_fresh_discovery.py .
+          cp ../fresh-config/publisher_cloud/fresh_candidates.json .
+          cp ../fresh-config/publisher_cloud/fresh_seen_bootstrap.json .
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
@@ -114,7 +136,7 @@ jobs:
           assert source.count(old) == 1
           p.write_text(source.replace(old, "desc.get_text('',strip=False)"))
           PY
-          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round
+          python3 -m unittest -v test_scan test_quantity_expansion test_scale_profile test_growth_profile test_continuation_profile test_deep_profile test_messaging_enrichment test_search_round test_fresh_discovery
           python3 - <<'PY'
           import asyncio
           from scan import route, telegram_hops
@@ -170,7 +192,8 @@ jobs:
           SEARCH_ROUND_ID: ${{ inputs.round_id }}
           SEARCH_PAGE: ${{ inputs.page || '0' }}
           SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
-        run: python3 search_round.py
+          SEARCH_SEEN_HOSTS: ${{ inputs.seen_hosts }}
+        run: python3 fresh_discovery.py
       - name: Publish authenticated ciphertext and retain report history
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -179,7 +202,7 @@ jobs:
           import base64, json, os
           from pathlib import Path
           import scan
-          import search_round
+          import fresh_discovery
           envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
           summary = json.loads(Path('sealed/summary.json').read_text())
           assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
@@ -190,10 +213,13 @@ jobs:
           assert len(base64.b64decode(envelope['ciphertext'], validate=True)) >= 16
           assert summary['run_id'] == os.environ['GITHUB_RUN_ID']
           mode = os.environ['SEED_BATCH']
-          cap = 120 if mode == 'search' else 500 if mode in {'all','next','deep','enrich'} else 240
-          assert 0 < summary['seeds_scanned'] <= cap
+          cap = 120 if mode in {'search','fresh'} else 500 if mode in {'all','next','deep','enrich'} else 240
+          if mode == 'fresh' and summary['status'] == 'FRESH_CANDIDATES_EXHAUSTED':
+              assert summary['seeds_scanned'] == 0 and summary['contact_evidence_records'] == 0
+          else:
+              assert 0 < summary['seeds_scanned'] <= cap
           assert summary['sites_checked'] <= cap + 12
-          search_round.publish(envelope, summary)
+          fresh_discovery.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data and public testable adapters
         if: ${{ always() && github.event_name != 'schedule' }}
@@ -211,6 +237,10 @@ jobs:
             publisher_cloud/messaging_enrichment.py
             publisher_cloud/enrichment_candidates.json
             publisher_cloud/search_round.py
+            publisher_cloud/fresh_discovery.py
+            publisher_cloud/contact_context.py
+            publisher_cloud/fresh_candidates.json
+            publisher_cloud/fresh_seen_bootstrap.json
             publisher_cloud/test_*.py
             publisher_cloud/requirements.txt
             publisher_cloud/leadengine/*.py
