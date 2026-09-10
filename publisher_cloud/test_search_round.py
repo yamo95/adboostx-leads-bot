@@ -7,6 +7,16 @@ RID = 'a' * 32
 SEEDS = ['https://publisher%d.example/contact' % i for i in range(275)]
 
 class SearchRoundTests(unittest.TestCase):
+    def setUp(self):
+        # Live dispatch inputs must never leak into a synthetic test request.
+        # In particular, page 1 supplies a real SEARCH_POOL_HASH, unlike page 0.
+        env = patch.dict(os.environ, {
+            'SEED_BATCH': 'auto', 'SEARCH_ROUND_ID': '', 'SEARCH_PAGE': '0',
+            'SEARCH_POOL_HASH': '', 'GITHUB_EVENT_NAME': 'push',
+        })
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_target_is_thirty_messaging(self):
         self.assertEqual(subject.TARGET, 30)
     def test_non_overlapping_pages(self):
@@ -65,6 +75,50 @@ class SearchRoundTests(unittest.TestCase):
         self.assertEqual(payload['search_round']['id'],RID)
         self.assertIs(subject.deep.select,old_select)
         self.assertIs(namespace['_save_operator_copy'],old_copy)
+
+    def test_live_hash_does_not_contaminate_synthetic_fixture(self):
+        with patch.dict(os.environ, {'SEARCH_POOL_HASH': 'f' * 64, 'SEARCH_PAGE': '1'}):
+            case = SearchRoundTests('test_hooks_restored_and_metadata_before_encryption')
+            result = unittest.TestResult()
+            case.run(result)
+            self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
+            self.assertEqual(os.environ['SEARCH_POOL_HASH'], 'f' * 64)
+            self.assertEqual(os.environ['SEARCH_PAGE'], '1')
+
+    def test_second_page_preserves_real_fingerprint_validation(self):
+        _, first = subject.page_plan(SEEDS, RID, 0)
+        namespace = subject.scan.main.__globals__
+        original_select = subject.deep.select
+        original_copy = namespace['_save_operator_copy']
+        payload = {'summary': {}, 'contacts': []}
+        def fake():
+            chosen = subject.deep.select(SEEDS, 'search')
+            self.assertEqual(len(chosen), 120)
+            namespace['_save_operator_copy'](payload)
+            return 0
+        with patch.dict(os.environ, {
+            'SEED_BATCH': 'search', 'SEARCH_ROUND_ID': RID, 'SEARCH_PAGE': '1',
+            'SEARCH_POOL_HASH': first['pool_hash'], 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+        }), patch.dict(namespace, {'_save_operator_copy': lambda p: dict(p)}), patch.object(subject.messaging, 'main', side_effect=fake):
+            self.assertEqual(subject.main(), 0)
+        self.assertEqual(payload['search_round']['page'], 1)
+        self.assertEqual(payload['search_round']['pool_hash'], first['pool_hash'])
+        self.assertIs(subject.deep.select, original_select)
+        self.assertIs(namespace['_save_operator_copy'], original_copy)
+
+    def test_invalid_live_hash_still_fails_and_restores_hooks(self):
+        namespace = subject.scan.main.__globals__
+        original_select = subject.deep.select
+        original_copy = namespace['_save_operator_copy']
+        with patch.dict(os.environ, {
+            'SEED_BATCH': 'search', 'SEARCH_ROUND_ID': RID, 'SEARCH_PAGE': '1',
+            'SEARCH_POOL_HASH': 'f' * 64, 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+        }), patch.object(subject.messaging, 'main', side_effect=lambda: subject.deep.select(SEEDS, 'search')):
+            with self.assertRaisesRegex(RuntimeError, 'CANDIDATE_POOL_CHANGED'):
+                subject.main()
+        self.assertIs(subject.deep.select, original_select)
+        self.assertIs(namespace['_save_operator_copy'], original_copy)
+
 
 class HistoryTests(unittest.TestCase):
     def test_history_is_not_pruned_at_sixty(self):
