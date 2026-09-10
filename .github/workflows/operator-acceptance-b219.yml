@@ -93,7 +93,7 @@ jobs:
       - name: Load rotating discovery and versioned extraction adapters
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 1f64786df248baef246911b42bb2bca150bb5101
+          ref: f51f989d4e2d2a4d065ea7ca2a2469daecd96040
           path: fresh-config
           sparse-checkout: |
             publisher_cloud/fresh_discovery.py
