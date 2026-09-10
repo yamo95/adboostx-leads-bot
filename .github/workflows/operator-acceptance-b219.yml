@@ -56,6 +56,7 @@ jobs:
     env:
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'fresh' }}
       SEARCH_DEPTH: ${{ inputs.depth || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[b219-deep]') && 'focused' || 'standard') }}
+      VALIDATE_ONLY: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, '[b219-validate]') && 'true' || 'false' }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -119,7 +120,7 @@ jobs:
       - name: Load tested optional deeper contact inspection
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 51ce50d8438d843c3922e00f3d4c643dc97be383
+          ref: 3ab4defcc0507d70fb9a6e0a6adc6a3957d16505
           path: depth-config
           sparse-checkout: |
             publisher_cloud/intent_depth.py
@@ -183,7 +184,7 @@ jobs:
               print(json.dumps({'candidate_list':filename,'before':len(previous),'after':len(rows),'contacts_imported':0}))
           PY
       - name: Prepare attributed daily domain candidates with a persisted request guard
-        if: env.SEED_BATCH == 'fresh' && env.SEARCH_DEPTH != 'focused'
+        if: env.SEED_BATCH == 'fresh' && env.SEARCH_DEPTH != 'focused' && env.VALIDATE_ONLY != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 catalog_candidates.py
@@ -200,6 +201,7 @@ jobs:
           Path('recipient.pem').write_bytes(raw)
           PY
       - name: Scan websites and their public contact previews without credentials
+        if: env.VALIDATE_ONLY != 'true'
         env:
           SEARCH_ROUND_ID: ${{ inputs.round_id }}
           SEARCH_PAGE: ${{ inputs.page || '0' }}
@@ -208,6 +210,7 @@ jobs:
           SEARCH_RECHECK_HOSTS: ${{ inputs.recheck_hosts }}
         run: python3 intent_depth.py
       - name: Publish authenticated ciphertext and retain report history
+        if: env.VALIDATE_ONLY != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -235,7 +238,7 @@ jobs:
           intent_depth.publish(envelope, summary)
           PY
       - name: Retain encrypted acceptance data and public testable adapters
-        if: ${{ always() && github.event_name != 'schedule' }}
+        if: ${{ always() && github.event_name != 'schedule' && env.VALIDATE_ONLY != 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-operator-b219-${{ github.run_id }}
