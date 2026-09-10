@@ -30,6 +30,12 @@ class IntentTests(unittest.TestCase):
     def test_ads_role(self):self.assertEqual(subject.intent_role('Ads: @OwnerExample','https://t.me/ChannelExample'),'business')
     def test_support_separate(self):self.assertEqual(subject.intent_role('Support: @OwnerExample','https://t.me/ChannelExample'),'support')
     def test_seo_hold(self):self.assertEqual(subject.intent_role('Backlinks Ads: @OwnerExample','https://t.me/ChannelExample'),'seo_service')
+    def test_document_slug_cannot_attribute_friend(self):
+        self.assertEqual(subject.intent_role('Our friend: @UnrelatedPerson','https://t.me/ContactDocument/45'),'unknown')
+    def test_article_slug_cannot_attribute_friend(self):
+        self.assertEqual(subject.intent_role('Our friend: @UnrelatedPerson','https://telegra.ph/Contact-09-10'),'unknown')
+    def test_ads_document_label(self):
+        self.assertEqual(len(subject.linked_documents('<p>ads- <a href="https://telegra.ph/Advertising-10-06">Details</a></p>','https://t.me/ChannelExample')),1)
     def test_standard_delegates(self):
         with patch.dict(os.environ,{'SEARCH_DEPTH':'standard'}),patch.object(subject.fresh_discovery,'main',return_value=19) as call:
             self.assertEqual(subject.main(),19);call.assert_called_once()
