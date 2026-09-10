@@ -2,6 +2,34 @@
   "format": 1,
   "runs": [
     {
+      "path": "publisher-results/runs/34468319575-1.json",
+      "summary": {
+        "created_at": "2026-09-10T10:59:04+00:00",
+        "run_id": "34468319575",
+        "seed_pool": 1307,
+        "seeds_scanned": 240,
+        "sites_checked": 252,
+        "pages_opened": 551,
+        "contact_evidence_records": 126,
+        "published_messaging_routes": 15,
+        "relevant_sites": 49,
+        "access_states": {
+          "robots_denied_or_unavailable": 53,
+          "http_403": 64,
+          "ok": 551,
+          "http_404": 630,
+          "cross_site_redirect": 36,
+          "http_500": 1,
+          "redirect_loop": 1,
+          "TimeoutError": 4,
+          "too_large": 1
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "publisher-results/runs/34465239015-1.json",
       "summary": {
         "created_at": "2026-09-10T10:18:42+00:00",
@@ -1116,6 +1144,6 @@
       }
     }
   ],
-  "updated_at": "2026-09-10T10:18:44+00:00",
+  "updated_at": "2026-09-10T10:59:07+00:00",
   "note": "Encrypted snapshots; private viewer required. Deleting an index entry does not erase Git history."
 }
