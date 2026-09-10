@@ -9,12 +9,15 @@ on:
       - docs/review.js
       - docs/round-search.js
       - docs/fresh-search.js
+      - docs/github-auth.js
       - docs/index.html
       - docs/style.css
       - tests/test_review_events.cjs
       - tests/test_search_round.cjs
       - tests/test_search_recovery.cjs
       - tests/test_fresh_ui.cjs
+      - tests/test_github_auth.cjs
+      - tests/browser_github_auth.py
       - tests/browser_smoke.py
   workflow_dispatch:
 
@@ -42,10 +45,14 @@ jobs:
         run: node tests/test_search_recovery.cjs
       - name: Verify unseen-site dispatch, direct-chat quality and agency exclusions
         run: node tests/test_fresh_ui.cjs
+      - name: Verify encrypted credential persistence, restore, revocation and lock races
+        run: node tests/test_github_auth.cjs
       - name: Install pinned browser test dependency
         run: |
           python3 -m pip install playwright==1.57.0
           python3 -m playwright install --with-deps --only-shell chromium
+      - name: Verify remembered authorization across browser reload and existing password unlock
+        run: python3 tests/browser_github_auth.py --docs docs --out browser-auth-checks
       - name: Verify hosted app and ciphertext access on desktop and emulated mobile
         run: python3 tests/browser_smoke.py --docs docs --hosted --out browser-checks
       - name: Retain synthetic-only browser evidence
@@ -53,6 +60,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: b219-ui-${{ github.run_id }}
-          path: browser-checks/*
+          path: |
+            browser-checks/*
+            browser-auth-checks/*
           retention-days: 3
           if-no-files-found: warn
