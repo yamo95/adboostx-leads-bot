@@ -120,11 +120,12 @@ jobs:
       - name: Load tested optional deeper contact inspection
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 3ab4defcc0507d70fb9a6e0a6adc6a3957d16505
+          ref: 285006a14ef063a06706c0adece83276908e3251
           path: depth-config
           sparse-checkout: |
             publisher_cloud/intent_depth.py
             publisher_cloud/intent_targets.json
+            publisher_cloud/intent_targets_20260910_round2.json
             publisher_cloud/test_intent_depth.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -208,7 +209,12 @@ jobs:
           SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
           SEARCH_SEEN_HOSTS: ${{ inputs.seen_hosts }}
           SEARCH_RECHECK_HOSTS: ${{ inputs.recheck_hosts }}
-        run: python3 intent_depth.py
+        run: |
+          if [ "$SEARCH_DEPTH" = "focused" ]; then
+            cp intent_targets_20260910_round2.json intent_targets.json
+            python3 -c "import intent_depth; assert len(intent_depth.targets()) == 28; print('Validated 28 distinct public targets for requested additional depth scan')"
+          fi
+          python3 intent_depth.py
       - name: Publish authenticated ciphertext and retain report history
         if: env.VALIDATE_ONLY != 'true'
         env:
