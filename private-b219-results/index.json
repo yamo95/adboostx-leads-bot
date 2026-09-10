@@ -2,6 +2,24 @@
   "format": 1,
   "runs": [
     {
+      "path": "private-b219-results/runs/34469520848-1.json",
+      "summary": {
+        "created_at": "2026-09-10T11:06:59+00:00",
+        "run_id": "34469520848",
+        "seed_pool": 0,
+        "seeds_scanned": 0,
+        "sites_checked": 0,
+        "pages_opened": 0,
+        "contact_evidence_records": 0,
+        "published_messaging_routes": 0,
+        "relevant_sites": 0,
+        "access_states": {},
+        "status": "FRESH_CANDIDATES_EXHAUSTED",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "No unseen candidates available; target not reached. No outreach was sent."
+      }
+    },
+    {
       "path": "private-b219-results/runs/34469061019-1.json",
       "summary": {
         "created_at": "2026-09-10T11:01:42+00:00",
@@ -836,7 +854,7 @@
       }
     }
   ],
-  "updated_at": "2026-09-10T11:01:50+00:00",
+  "updated_at": "2026-09-10T11:07:05+00:00",
   "key_id": "b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b",
   "note": "Encrypted operator snapshots. Private access file required. Git history persists."
 }
