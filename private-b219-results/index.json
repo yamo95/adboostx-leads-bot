@@ -2,6 +2,33 @@
   "format": 1,
   "runs": [
     {
+      "path": "private-b219-results/runs/34454388330-1.json",
+      "summary": {
+        "created_at": "2026-09-10T08:20:52+00:00",
+        "run_id": "34454388330",
+        "seed_pool": 1307,
+        "seeds_scanned": 120,
+        "sites_checked": 125,
+        "pages_opened": 351,
+        "contact_evidence_records": 60,
+        "published_messaging_routes": 3,
+        "relevant_sites": 33,
+        "access_states": {
+          "robots_denied_or_unavailable": 30,
+          "http_403": 31,
+          "ok": 351,
+          "cross_site_redirect": 6,
+          "http_404": 232,
+          "http_500": 6,
+          "http_502": 1,
+          "ServerDisconnectedError": 1
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "private-b219-results/runs/34454049373-1.json",
       "summary": {
         "created_at": "2026-09-10T08:16:51+00:00",
@@ -523,7 +550,7 @@
       }
     }
   ],
-  "updated_at": "2026-09-10T08:16:57+00:00",
+  "updated_at": "2026-09-10T08:20:56+00:00",
   "key_id": "b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b",
   "note": "Encrypted operator snapshots. Private access file required. Git history persists."
 }
