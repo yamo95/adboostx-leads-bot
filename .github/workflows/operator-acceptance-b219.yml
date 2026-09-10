@@ -120,12 +120,13 @@ jobs:
       - name: Load tested optional deeper contact inspection
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 285006a14ef063a06706c0adece83276908e3251
+          ref: 345d402e6eedb2e53e95a355e8fb1f2bde973118
           path: depth-config
           sparse-checkout: |
             publisher_cloud/intent_depth.py
             publisher_cloud/intent_targets.json
             publisher_cloud/intent_targets_20260910_round2.json
+            publisher_cloud/intent_targets_20260910_research10.json
             publisher_cloud/test_intent_depth.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -211,8 +212,8 @@ jobs:
           SEARCH_RECHECK_HOSTS: ${{ inputs.recheck_hosts }}
         run: |
           if [ "$SEARCH_DEPTH" = "focused" ]; then
-            cp intent_targets_20260910_round2.json intent_targets.json
-            python3 -c "import intent_depth; assert len(intent_depth.targets()) == 28; print('Validated 28 distinct public targets for requested additional depth scan')"
+            cp intent_targets_20260910_research10.json intent_targets.json
+            python3 -c "import intent_depth; assert len(intent_depth.targets()) == 18; print('Validated 18 distinct public research targets; novelty and contact quality remain subject to evidence review')"
           fi
           python3 intent_depth.py
       - name: Publish authenticated ciphertext and retain report history
