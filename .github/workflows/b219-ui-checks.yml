@@ -16,6 +16,7 @@ on:
       - tests/test_search_round.cjs
       - tests/test_search_recovery.cjs
       - tests/test_fresh_ui.cjs
+      - tests/test_discovery_rechecks.cjs
       - tests/test_github_auth.cjs
       - tests/browser_github_auth.py
       - tests/browser_smoke.py
@@ -45,6 +46,8 @@ jobs:
         run: node tests/test_search_recovery.cjs
       - name: Verify unseen-site dispatch, direct-chat quality and agency exclusions
         run: node tests/test_fresh_ui.cjs
+      - name: Verify bounded revision-specific extraction rechecks
+        run: node tests/test_discovery_rechecks.cjs
       - name: Verify encrypted credential persistence, restore, revocation and lock races
         run: node tests/test_github_auth.cjs
       - name: Install pinned browser test dependency
