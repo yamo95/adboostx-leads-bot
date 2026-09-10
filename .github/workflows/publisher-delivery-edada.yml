@@ -1,0 +1,73 @@
+name: Publisher Delivery - edada
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publisher-delivery-edada.yml]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9,18 * * *'
+      timezone: Asia/Jerusalem
+permissions:
+  contents: write
+concurrency:
+  group: publisher-delivery-edada
+  cancel-in-progress: false
+jobs:
+  scan:
+    if: github.repository == 'yamo95/adboostx-leads-bot' && github.ref_name == 'main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: publisher_cloud
+    env:
+      SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || 'all' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 820de1cace5904b7b5dfb10781a11f1524f6763e
+          persist-credentials: false
+      - name: Install and test pinned scanner
+        run: |
+          python3 -m pip install -r requirements.txt
+          python3 -m unittest -v test_scan
+      - name: Scan and encrypt without repository credentials
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, json, hashlib
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          import scan
+          raw = Path('delivery-public.pem').read_bytes()
+          key = serialization.load_pem_public_key(raw)
+          der = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+          assert hashlib.sha256(der).hexdigest() == 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe'
+          Path('recipient.pem').write_bytes(raw)
+          original = scan.seal
+          def compact(payload, public_key):
+              data = json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode()
+              return original({'encoding':'gzip+base64','data':base64.b64encode(gzip.compress(data,mtime=0)).decode()},public_key)
+          scan.seal = compact
+          raise SystemExit(scan.main())
+          PY
+      - name: Publish isolated ciphertext only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import scan
+          envelope = json.loads(Path('sealed/results.encrypted.json').read_text())
+          summary = json.loads(Path('sealed/summary.json').read_text())
+          assert set(envelope) == {'format','key_id','wrapped_key','nonce','ciphertext'}
+          assert envelope['format'] == scan.FORMAT
+          assert envelope['key_id'] == 'edada6893d836770882700362b24d3ac8c8e3b92ee9618e3d675245218080ebe'
+          assert set(summary) <= {'created_at','run_id','seed_pool','seeds_scanned','sites_checked','pages_opened','contact_evidence_records','published_messaging_routes','relevant_sites','access_states','status','mode','notice'}
+          original = scan.gh
+          def isolated(method,endpoint,payload=None):
+              return original(method,endpoint.replace('publisher-results','publisher-delivery-edada'),payload)
+          scan.gh = isolated
+          scan.publish(envelope,summary)
+          print('Encrypted operator report published.')
+          PY
