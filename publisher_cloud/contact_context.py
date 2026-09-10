@@ -34,7 +34,6 @@ def local_context(node):
         text = scan.clean(parent.get_text(' ',strip=True))
         if len(text) <= 350 and len(parent.select('a[href]')) <= 3:
             pieces.append(text)
-        # A heading directly before a list/card labels its own block only.
         heading = parent.find_previous_sibling(HEADINGS)
         if heading is not None:
             siblings = list(heading.next_siblings)
@@ -51,7 +50,6 @@ def parse(html, source):
     for node in soup(['script','style','form','noscript','template','svg']): node.decompose()
     for node in soup.select('[hidden],[aria-hidden="true"], [style*="display:none"], [style*="display: none"]'): node.decompose()
     for node in soup.find_all(string=lambda s:isinstance(s,Comment)): node.extract()
-    # Never mine application descriptions, user comments, legal boilerplate or posts.
     if re.search(r'dmca|privacy|terms|copyright',urlsplit(source).path,re.I): return contacts,links,text
     additions=[]
     for a in soup.select('a[href]'):
@@ -65,7 +63,6 @@ def parse(html, source):
         if enriched and enriched['role'] in {'business','contact','support'}:
             enriched['notes']='Published link with a bounded local contact heading; not an ownership or activity verification.'
             additions.append(enriched)
-    # Text-only handles split by <span>/<strong> are missed by line-only parsing.
     for block in soup.select('p,li,dd'):
         if block.find_parent(class_=re.compile(r'comment|review-body|user-post',re.I)): continue
         value=scan.clean(block.get_text(' ',strip=True))
@@ -80,7 +77,30 @@ def parse(html, source):
                 if number:
                     row=scan.route('https://wa.me/'+number[1:],value,source)
                     if row: additions.append(row)
-    # Original purpose exclusions outrank context recovery.
+    # Explicit messaging labels on contact pages do not need an additional
+    # "contact" word inside the same small text block. Never infer WhatsApp
+    # from an unlabelled number, an app description, hidden content or a form.
+    if re.search(r'contact|kontakt|contato|kontak|lien-he',urlsplit(source).path,re.I) and not EXCLUDED_CONTEXT.search(text):
+        for block in soup.select('p,li,dd,dt,td,h2,h3,h4,h5,h6,div'):
+            if block.find_parent(class_=re.compile(r'comment|review-body|user-post',re.I)): continue
+            value=scan.clean(block.get_text(' ',strip=True))
+            if len(value)>350 or not re.search(r'whats\s*app',value,re.I): continue
+            if EXCLUDED_CONTEXT.search(value): continue
+            values=[value]
+            if block.name in HEADINGS+['dt'] and not re.search(r'\+[1-9]',value):
+                for sibling in list(block.find_next_siblings())[:2]:
+                    if sibling.name not in {'p','dd','div'}: break
+                    following=scan.clean(sibling.get_text(' ',strip=True))
+                    if len(following)>120 or sibling.select('form,script') or EXCLUDED_CONTEXT.search(following): break
+                    if re.fullmatch(r'\+[1-9][0-9\s().-]{7,22}[0-9]',following): values.append(following)
+            context=scan.clean(' | '.join(values))
+            for number_text in re.findall(r'\+[1-9][0-9\s().-]{7,22}[0-9]',context)[:2]:
+                number=scan.phone(number_text)
+                if number:
+                    row=scan.route('https://wa.me/'+number[1:],context,source)
+                    if row and row['role'] in {'business','contact','support'}:
+                        row['notes']='International number explicitly labelled WhatsApp in a small block on the website contact page. No account-registration or message-delivery check.'
+                        additions.append(row)
     held={(c['channel'],c['contact'].casefold()) for c in contacts if c['role'] in {'legal','seo_service'}}
     additions=[c for c in additions if (c['channel'],c['contact'].casefold()) not in held]
     return scan.unique(contacts+additions),links,text
