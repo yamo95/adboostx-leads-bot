@@ -3,7 +3,6 @@
 const freshPriorReviewReason=reviewReason;
 reviewReason=function(c){
  const h=String(c.domain||'').toLowerCase().replace(/^www\./,'');
- // Site contacts also advertised by an SEO agency; retain evidence for review.
  if(h==='filmy4.org'&&['telegram','whatsapp'].includes(c.channel))return 'SEO_SERVICE_CONTACT';
  return freshPriorReviewReason(c);
 };
@@ -25,17 +24,19 @@ function directMessaging(c){
 }
 const FRESH_EXTRACTION_REVISION='messaging-intent-v3';
 function recheckDomains(payloads){
- const latest=new Map(),revised=new Set();
+ const latest=new Map(),revised=new Set(),whatsappRevised=new Set();
  for(const p of [...payloads].sort((a,b)=>String(a.summary?.created_at||'').localeCompare(String(b.summary?.created_at||'')))){
   for(const site of p.sites||[]){
    const h=String(site.domain||'').toLowerCase().replace(/^www\./,'').replace(/\.$/,'');
    if(!h||!/^[a-z0-9.-]+$/.test(h))continue;
    if(site.extraction_revision===FRESH_EXTRACTION_REVISION)revised.add(h);
+   if(site.whatsapp_context_revision==='whatsapp-label-v1')whatsappRevised.add(h);
    if(site.state==='SCANNED'&&site.html_pages_opened>0)latest.set(h,{site,contacts:(p.contacts||[]).filter(c=>c.domain===site.domain)});
   }
  }
- return [...latest].filter(([h,{site,contacts}])=>!revised.has(h)&&site.site_fit==='PASS'&&
-  contacts.some(c=>c.channel==='telegram'&&['community','unverified'].includes(c.profile_type)&&publicURL(c.source_url))&&
+ return [...latest].filter(([h,{site,contacts}])=>site.site_fit==='PASS'&&
+  ((!revised.has(h)&&contacts.some(c=>c.channel==='telegram'&&['community','unverified'].includes(c.profile_type)&&publicURL(c.source_url)))||
+   (!whatsappRevised.has(h)&&contacts.some(c=>c.channel==='email'&&published(c)&&/contact|kontakt|contato|kontak/i.test(String(c.source_url)))))&&
   !contacts.some(c=>directMessaging(c))).map(([h])=>h).sort().slice(0,80);
 }
 async function recheckFingerprints(payloads){
@@ -69,9 +70,9 @@ renderSearch=function(){
  if(!$('searchDiagnostics'))return;
  if(searchState?.strategy==='fresh'&&freshDiagnostics){
   const d=freshDiagnostics;
-  $('searchDiagnostics').textContent=`${d.unseen} אתרים חדשים; ${d.rechecks} אתרים לבדיקת חילוץ חוזרת. ${d.skipped} דולגו. נבדקו ${d.scanned}. צ׳אטים: ${d.newCount} חדשים, ${d.known} מוכרים, ${d.held} לבדיקה. חיפושי רשת שהוסיפו מועמדים: ${d.discovery}; בקשות שנכשלו: ${d.failed}.`;
+  $('searchDiagnostics').textContent=`${d.unseen} אתרים חדשים; ${d.rechecks} אתרים לבדיקת חילוץ חוזרת. ${d.skipped} דולגו. נבדקו ${d.scanned}. צ׳אטים: ${d.newCount} חדשים, ${d.known} מוכרים, ${d.held} לבדיקה. מקורות גילוי שהוסיפו מועמדים: ${d.discovery}; בקשות שנכשלו: ${d.failed}.`;
   if(searchState.status==='exhausted'&&!d.pool)searchMessage(d.health==='unavailable'?'מקורות הגילוי לא היו זמינים. לא נסרקו אתרים בסבב הזה; היעד לא הושג.':'לא נמצאו מועמדים נוספים לסריקה. היעד לא הושג.',true);
- }else $('searchDiagnostics').textContent='חיפוש מקורות חדשים ובדיקה ממוקדת של אתרים שבהם נמצא ערוץ ללא איש קשר. קונטקטים מוכרים, קבוצות, בוטים ואימיילים אינם נספרים ליעד של 30 צ׳אטים חדשים.';
+ }else $('searchDiagnostics').textContent='חיפוש מקורות חדשים ובדיקה ממוקדת של דפי קשר וערוצים שבהם חסר איש קשר ישיר. קונטקטים מוכרים, קבוצות, בוטים ואימיילים אינם נספרים ליעד של 30 צ׳אטים חדשים.';
 };
 const freshPriorGithub=githubSearch;
 githubSearch=async function(path,method='GET',payload=null){
@@ -98,7 +99,7 @@ startSearch=async function(resume=false){
    started_at:new Date().toISOString(),target:30,page:0,pool_hash:'',baseline,seen_hosts,recheck_hosts,pending:null,status:'running'};
   freshDiagnostics=null;searchFound=[];$('searchRunLink').hidden=true;
   saveSearch();searchRunning=true;searchEpoch++;
-  searchMessage('מגלה מקורות חדשים ובודק אנשי קשר שפוספסו באתרים עם ערוצים. היעד: 30 צ׳אטים חדשים עם מקור.');renderSearch();
+  searchMessage('מגלה מקורות חדשים ובודק אנשי קשר שפוספסו בדפי קשר ובערוצים. היעד: 30 צ׳אטים חדשים עם מקור.');renderSearch();
  }catch(e){searchMessage('לא הופעל חיפוש: '+e.message+'. הנתונים הקיימים נשמרו.',true);return;}
  finally{searchFlight=false;}
  void advanceSearch(searchEpoch);
