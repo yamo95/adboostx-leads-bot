@@ -42,9 +42,6 @@ jobs:
         working-directory: publisher_cloud
     env:
       SEED_BATCH: ${{ github.event_name == 'schedule' && 'auto' || inputs.batch || 'enrich' }}
-      SEARCH_ROUND_ID: ${{ inputs.round_id }}
-      SEARCH_PAGE: ${{ inputs.page || '0' }}
-      SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
       PYTHONUNBUFFERED: '1'
     steps:
       - name: Preserve accepted scanner and existing report key
@@ -78,7 +75,7 @@ jobs:
       - name: Load reviewed interactive search adapter only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 7ea1451a5d3312ec451d85b1aecc19d246e0f239
+          ref: 71f34b5e45222f01e60c01baf8cf824c74101664
           path: search-config
           sparse-checkout: |
             publisher_cloud/search_round.py
@@ -169,6 +166,10 @@ jobs:
           Path('recipient.pem').write_bytes(raw)
           PY
       - name: Scan websites and their public contact previews without credentials
+        env:
+          SEARCH_ROUND_ID: ${{ inputs.round_id }}
+          SEARCH_PAGE: ${{ inputs.page || '0' }}
+          SEARCH_POOL_HASH: ${{ inputs.pool_hash }}
         run: python3 search_round.py
       - name: Publish authenticated ciphertext and retain report history
         env:
