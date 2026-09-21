@@ -2,6 +2,34 @@
   "format": 1,
   "runs": [
     {
+      "path": "publisher-results/runs/35598670828-1.json",
+      "summary": {
+        "created_at": "2026-09-21T12:24:04+00:00",
+        "run_id": "35598670828",
+        "seed_pool": 1295,
+        "seeds_scanned": 240,
+        "sites_checked": 251,
+        "pages_opened": 673,
+        "contact_evidence_records": 139,
+        "published_messaging_routes": 12,
+        "relevant_sites": 105,
+        "access_states": {
+          "robots_denied_or_unavailable": 103,
+          "ok": 673,
+          "http_404": 371,
+          "http_403": 32,
+          "cross_site_redirect": 24,
+          "http_521": 1,
+          "http_500": 2,
+          "TimeoutError": 2,
+          "http_410": 5
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "publisher-results/runs/35594322253-1.json",
       "summary": {
         "created_at": "2026-09-21T11:31:12+00:00",
@@ -1756,26 +1784,8 @@
         "mode": "keyless_bounded_snapshot",
         "notice": "No unseen candidates available; target not reached. No outreach was sent."
       }
-    },
-    {
-      "path": "publisher-results/runs/34469520848-1.json",
-      "summary": {
-        "created_at": "2026-09-10T11:06:59+00:00",
-        "run_id": "34469520848",
-        "seed_pool": 0,
-        "seeds_scanned": 0,
-        "sites_checked": 0,
-        "pages_opened": 0,
-        "contact_evidence_records": 0,
-        "published_messaging_routes": 0,
-        "relevant_sites": 0,
-        "access_states": {},
-        "status": "FRESH_CANDIDATES_EXHAUSTED",
-        "mode": "keyless_bounded_snapshot",
-        "notice": "No unseen candidates available; target not reached. No outreach was sent."
-      }
     }
   ],
-  "updated_at": "2026-09-21T11:31:15+00:00",
+  "updated_at": "2026-09-21T12:24:07+00:00",
   "note": "Encrypted snapshots; private viewer required. Deleting an index entry does not erase Git history."
 }
