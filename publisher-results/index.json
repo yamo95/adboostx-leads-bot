@@ -2,6 +2,36 @@
   "format": 1,
   "runs": [
     {
+      "path": "publisher-results/runs/36427079162-1.json",
+      "summary": {
+        "created_at": "2026-09-28T13:19:53+00:00",
+        "run_id": "36427079162",
+        "seed_pool": 1286,
+        "seeds_scanned": 240,
+        "sites_checked": 247,
+        "pages_opened": 538,
+        "contact_evidence_records": 117,
+        "published_messaging_routes": 16,
+        "relevant_sites": 30,
+        "access_states": {
+          "robots_denied_or_unavailable": 65,
+          "cross_site_redirect": 18,
+          "ok": 538,
+          "http_404": 656,
+          "http_403": 32,
+          "too_large": 3,
+          "http_410": 5,
+          "http_467": 1,
+          "http_500": 1,
+          "redirect_loop": 1,
+          "TimeoutError": 2
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "publisher-results/runs/36421604652-1.json",
       "summary": {
         "created_at": "2026-09-28T12:25:42+00:00",
@@ -1840,37 +1870,8 @@
         "discovery_candidates": 6,
         "parsing": "audited_v11_core"
       }
-    },
-    {
-      "path": "publisher-results/runs/34754076492-1.json",
-      "summary": {
-        "created_at": "2026-09-13T11:26:18+00:00",
-        "run_id": "34754076492",
-        "seed_pool": 1305,
-        "seeds_scanned": 240,
-        "sites_checked": 252,
-        "pages_opened": 559,
-        "contact_evidence_records": 105,
-        "published_messaging_routes": 13,
-        "relevant_sites": 86,
-        "access_states": {
-          "robots_denied_or_unavailable": 54,
-          "http_403": 67,
-          "ok": 559,
-          "http_404": 560,
-          "cross_site_redirect": 35,
-          "too_large": 2,
-          "ClientResponseError": 5,
-          "http_526": 1,
-          "TimeoutError": 4,
-          "http_500": 8
-        },
-        "status": "LIVE_SCAN_COMPLETE",
-        "mode": "keyless_bounded_snapshot",
-        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
-      }
     }
   ],
-  "updated_at": "2026-09-28T12:25:44+00:00",
+  "updated_at": "2026-09-28T13:19:57+00:00",
   "note": "Encrypted snapshots; private viewer required. Deleting an index entry does not erase Git history."
 }
