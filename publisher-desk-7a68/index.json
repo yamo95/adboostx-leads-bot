@@ -2,6 +2,30 @@
   "format": 1,
   "runs": [
     {
+      "path": "publisher-desk-7a68/runs/43251415145-1.json",
+      "summary": {
+        "created_at": "2026-11-12T15:47:41+00:00",
+        "run_id": "43251415145",
+        "seed_pool": 24,
+        "seeds_scanned": 12,
+        "sites_checked": 13,
+        "pages_opened": 57,
+        "contact_evidence_records": 13,
+        "published_messaging_routes": 3,
+        "relevant_sites": 8,
+        "access_states": {
+          "ok": 57,
+          "http_404": 28,
+          "too_large": 1,
+          "robots_denied_or_unavailable": 2,
+          "cross_site_redirect": 4
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "publisher-desk-7a68/runs/43112148936-1.json",
       "summary": {
         "created_at": "2026-11-11T22:30:19+00:00",
@@ -1453,33 +1477,8 @@
         "mode": "keyless_bounded_snapshot",
         "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
       }
-    },
-    {
-      "path": "publisher-desk-7a68/runs/38263612175-1.json",
-      "summary": {
-        "created_at": "2026-10-12T14:33:55+00:00",
-        "run_id": "38263612175",
-        "seed_pool": 24,
-        "seeds_scanned": 12,
-        "sites_checked": 13,
-        "pages_opened": 36,
-        "contact_evidence_records": 14,
-        "published_messaging_routes": 3,
-        "relevant_sites": 4,
-        "access_states": {
-          "robots_denied_or_unavailable": 4,
-          "http_403": 1,
-          "ok": 36,
-          "http_404": 18,
-          "too_large": 1,
-          "cross_site_redirect": 5
-        },
-        "status": "LIVE_SCAN_COMPLETE",
-        "mode": "keyless_bounded_snapshot",
-        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
-      }
     }
   ],
-  "updated_at": "2026-11-11T22:30:22+00:00",
+  "updated_at": "2026-11-12T15:47:44+00:00",
   "note": "Encrypted snapshots; private viewer required. Deleting an index entry does not erase Git history."
 }
