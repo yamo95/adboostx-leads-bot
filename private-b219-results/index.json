@@ -2,6 +2,37 @@
   "format": 1,
   "runs": [
     {
+      "path": "private-b219-results/runs/43602425034-1.json",
+      "summary": {
+        "created_at": "2026-11-14T14:07:43+00:00",
+        "run_id": "43602425034",
+        "seed_pool": 1275,
+        "seeds_scanned": 240,
+        "sites_checked": 247,
+        "pages_opened": 766,
+        "contact_evidence_records": 111,
+        "published_messaging_routes": 1,
+        "relevant_sites": 79,
+        "access_states": {
+          "robots_denied_or_unavailable": 49,
+          "ok": 766,
+          "http_404": 652,
+          "http_403": 17,
+          "ServerDisconnectedError": 1,
+          "cross_site_redirect": 9,
+          "http_429": 8,
+          "too_large": 3,
+          "TimeoutError": 1,
+          "http_503": 7,
+          "http_500": 2,
+          "ClientResponseError": 2
+        },
+        "status": "LIVE_SCAN_COMPLETE",
+        "mode": "keyless_bounded_snapshot",
+        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
+      }
+    },
+    {
       "path": "private-b219-results/runs/43514104781-1.json",
       "summary": {
         "created_at": "2026-11-13T21:58:08+00:00",
@@ -1695,39 +1726,9 @@
         "mode": "keyless_bounded_snapshot",
         "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
       }
-    },
-    {
-      "path": "private-b219-results/runs/38556364113-1.json",
-      "summary": {
-        "created_at": "2026-10-14T11:30:37+00:00",
-        "run_id": "38556364113",
-        "seed_pool": 1263,
-        "seeds_scanned": 240,
-        "sites_checked": 251,
-        "pages_opened": 552,
-        "contact_evidence_records": 130,
-        "published_messaging_routes": 20,
-        "relevant_sites": 36,
-        "access_states": {
-          "robots_denied_or_unavailable": 69,
-          "ok": 552,
-          "http_404": 654,
-          "http_410": 6,
-          "cross_site_redirect": 29,
-          "http_403": 35,
-          "http_467": 1,
-          "http_500": 1,
-          "TimeoutError": 1,
-          "too_large": 2,
-          "http_503": 1
-        },
-        "status": "LIVE_SCAN_COMPLETE",
-        "mode": "keyless_bounded_snapshot",
-        "notice": "Published routes are not verified accounts, authority, consent or AdMaven approval. No outreach was sent."
-      }
     }
   ],
-  "updated_at": "2026-11-13T21:58:14+00:00",
+  "updated_at": "2026-11-14T14:07:52+00:00",
   "key_id": "b219c932768c4a5e52dda6bec834872f899811fe5142b0cd34f4f113afadf29b",
   "note": "Encrypted operator snapshots. Private access file required. Git history persists."
 }
